@@ -12,6 +12,15 @@ logger = logging.getLogger(__name__)
 
 PYDANTIC_AI_REQUEST_PARAMETERS_ATTR = "model_request_parameters"
 PYDANTIC_AI_TOOL_DEFINITIONS_ATTR = "gen_ai.tool.definitions"
+
+# Source attributes consumed during enrichment.  After extracting structured
+# `tools` / `response_format` from these, the originals are redundant and
+# must be stripped so they don't duplicate into `metadata`.
+_ENRICHMENT_SOURCE_ATTRS = frozenset({
+    PYDANTIC_AI_REQUEST_PARAMETERS_ATTR,
+    PYDANTIC_AI_TOOL_DEFINITIONS_ATTR,
+})
+
 _PYDANTIC_AI_ENRICHMENT_MARKER = "_respan_pydantic_ai_enrichment_installed"
 _PYDANTIC_AI_ADD_PROCESSOR_PATCH_MARKER = (
     "_respan_pydantic_ai_add_span_processor_patched"
@@ -179,7 +188,10 @@ def _enrich_pydantic_ai_span(span: ReadableSpan) -> None:
         if tools is None and response_format is None:
             return
 
-        enriched_attributes = dict(attributes)
+        enriched_attributes = {
+            k: v for k, v in attributes.items()
+            if k not in _ENRICHMENT_SOURCE_ATTRS
+        }
         if tools is not None:
             enriched_attributes["tools"] = tools
         if response_format is not None:
