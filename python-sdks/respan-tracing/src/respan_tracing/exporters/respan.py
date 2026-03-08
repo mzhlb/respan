@@ -1,5 +1,6 @@
 import base64
 import json
+from collections.abc import Mapping
 from typing import Dict, Optional, Sequence, List, Any
 
 import requests
@@ -19,6 +20,7 @@ from respan_sdk.constants.otlp_constants import (
     OTLP_BYTES_VALUE,
     OTLP_ARRAY_VALUE,
     OTLP_ARRAY_VALUES_KEY,
+    OTLP_KVLIST_VALUE,
     OTLP_ATTR_KEY,
     OTLP_ATTR_VALUE,
     OTLP_TRACE_ID_KEY,
@@ -83,6 +85,15 @@ def _convert_attribute_value(value: Any) -> Optional[Dict[str, Any]]:
         return {OTLP_STRING_VALUE: value}
     if isinstance(value, bytes):
         return {OTLP_BYTES_VALUE: base64.b64encode(value).decode("ascii")}
+    if isinstance(value, Mapping):
+        converted_items = []
+        for item_key, item_value in value.items():
+            converted_value = _convert_attribute_value(item_value)
+            if converted_value is not None:
+                converted_items.append(
+                    {OTLP_ATTR_KEY: str(item_key), OTLP_ATTR_VALUE: converted_value}
+                )
+        return {OTLP_KVLIST_VALUE: {OTLP_ARRAY_VALUES_KEY: converted_items}}
     if isinstance(value, (list, tuple)):
         converted = []
         for item in value:

@@ -3,10 +3,19 @@ from pydantic_ai.agent import Agent
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.models.instrumented import InstrumentationSettings
 from respan_exporter_pydantic_ai import instrument_pydantic_ai
+from respan_sdk.respan_types.base_types import RespanBaseModel
 from respan_tracing import RespanTelemetry
 from respan_tracing.core.tracer import RespanTracer
 from respan_tracing.testing import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+
+class StructuredAnswer(RespanBaseModel):
+    answer: str
+
+
+def lookup_weather(query: str) -> str:
+    return f"Sunny in {query}"
 
 @pytest.fixture(autouse=True)
 def reset_tracer():
@@ -82,4 +91,45 @@ def test_instrument_specific_agent():
     
     spans = span_exporter.get_finished_spans()
     assert len(spans) > 0, "Instrumented agent should produce spans"
+
+
+def test_pydantic_ai_span_extracts_tools_and_response_format():
+    telemetry = RespanTelemetry(
+        app_name="test-app",
+        is_enabled=True,
+        is_batching_enabled=False,
+    )
+
+    span_exporter = InMemorySpanExporter()
+    telemetry.add_processor(
+        exporter=span_exporter,
+        is_batching_enabled=False,
+    )
+
+    agent = Agent(
+        model=TestModel(custom_output_args={"answer": "ok"}),
+        output_type=StructuredAnswer,
+        tools=[lookup_weather],
+    )
+
+    instrument_pydantic_ai(agent=agent)
+
+    result = agent.run_sync("What is the weather?")
+    assert result.output.answer == "ok"
+
+    telemetry.flush()
+    spans = span_exporter.get_finished_spans()
+    chat_span = next(
+        span
+        for span in spans
+        if (span.attributes or {}).get("gen_ai.operation.name") == "chat"
+    )
+
+    tools = chat_span.attributes["tools"]
+    assert isinstance(tools, list)
+    assert {tool["function"]["name"] for tool in tools} == {
+        "lookup_weather",
+        "final_result",
+    }
+    assert chat_span.attributes["response_format"] == {"type": "tool"}
 
