@@ -41,6 +41,10 @@ from respan_sdk.constants.otlp_constants import (
     OTEL_SCOPE_NAME_KEY,
     OTEL_SCOPE_VERSION_KEY,
     ERROR_MESSAGE_ATTR,
+    # Promoted attribute key sets
+    RESPAN_PROMOTED_KEYS,
+    GEN_AI_PROMOTED_KEYS,
+    ALL_PROMOTED_KEYS,
 )
 
 DEFAULT_EVAL_LLM_ENGINE = "gpt-4o-mini"
@@ -96,4 +100,7 @@ __all__ = [
     "OTEL_SCOPE_NAME_KEY",
     "OTEL_SCOPE_VERSION_KEY",
     "ERROR_MESSAGE_ATTR",
+    "RESPAN_PROMOTED_KEYS",
+    "GEN_AI_PROMOTED_KEYS",
+    "ALL_PROMOTED_KEYS",
 ]
