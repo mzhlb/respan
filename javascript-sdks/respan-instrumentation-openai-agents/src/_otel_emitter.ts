@@ -143,8 +143,12 @@ function buildReadableSpan(opts: BuildSpanOptions): ReadableSpan {
 
 function injectSpan(span: ReadableSpan): void {
   const tp = trace.getTracerProvider() as any;
+  // Walk the provider chain to find activeSpanProcessor:
+  // ProxyTracerProvider._delegate (NodeTracerProvider) has activeSpanProcessor
   const processor =
-    tp?.activeSpanProcessor ?? tp?._delegate?.activeSpanProcessor;
+    tp?.activeSpanProcessor ??
+    tp?._delegate?.activeSpanProcessor ??
+    tp?._delegate?._tracerProvider?.activeSpanProcessor;
   if (processor && typeof processor.onEnd === "function") {
     processor.onEnd(span);
   }

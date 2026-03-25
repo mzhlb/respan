@@ -118,10 +118,32 @@ RESPAN_SPAN_ATTRIBUTES_MAP = {
 }
 
 # ---------------------------------------------------------------------------
+# Respan metadata attributes (agent-specific)
+# ---------------------------------------------------------------------------
+RESPAN_METADATA_AGENT_NAME = "respan.metadata.agent_name"
+RESPAN_METADATA_FROM_AGENT = "respan.metadata.from_agent"
+RESPAN_METADATA_TO_AGENT = "respan.metadata.to_agent"
+RESPAN_METADATA_GUARDRAIL_NAME = "respan.metadata.guardrail_name"
+RESPAN_METADATA_TRIGGERED = "respan.metadata.triggered"
+RESPAN_SPAN_TOOLS = "respan.span.tools"
+RESPAN_SPAN_HANDOFFS = "respan.span.handoffs"
+
+# ---------------------------------------------------------------------------
+# LLM attributes (removed from opentelemetry-semantic-conventions-ai 0.5.0)
+# Defined locally for backward compatibility with the Respan pipeline.
+# ---------------------------------------------------------------------------
+LLM_REQUEST_TYPE = "llm.request.type"
+LLM_REQUEST_MODEL = "gen_ai.request.model"
+LLM_USAGE_PROMPT_TOKENS = "gen_ai.usage.prompt_tokens"
+LLM_USAGE_COMPLETION_TOKENS = "gen_ai.usage.completion_tokens"
+LLM_REQUEST_REASONING_EFFORT = "llm.request.reasoning_effort"
+
+# ---------------------------------------------------------------------------
 # OTEL incubating GenAI attributes
 # Not yet available in opentelemetry.semconv_ai.SpanAttributes — defined
 # locally until the upstream package includes them.
 # ---------------------------------------------------------------------------
+GEN_AI_SYSTEM = "gen_ai.system"
 GEN_AI_OPERATION_NAME = "gen_ai.operation.name"
 GEN_AI_AGENT_NAME = "gen_ai.agent.name"
 GEN_AI_TOOL_NAME = "gen_ai.tool.name"
