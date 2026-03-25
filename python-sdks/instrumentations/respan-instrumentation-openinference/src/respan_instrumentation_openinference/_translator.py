@@ -55,6 +55,8 @@ from respan_sdk.constants.span_attributes import (
 from respan_sdk.constants.llm_logging import (
     LOG_TYPE_AGENT,
     LOG_TYPE_CHAT,
+    LOG_TYPE_EMBEDDING,
+    LOG_TYPE_GUARDRAIL,
     LOG_TYPE_TOOL,
     LOG_TYPE_WORKFLOW,
 )
@@ -135,9 +137,9 @@ _OI_KIND_TO_LOG_TYPE: Dict[str, str] = {
     "TOOL": LOG_TYPE_TOOL,
     "AGENT": LOG_TYPE_AGENT,
     "RETRIEVER": "task",
-    "EMBEDDING": "task",
+    "EMBEDDING": LOG_TYPE_EMBEDDING,
     "RERANKER": "task",
-    "GUARDRAIL": "task",
+    "GUARDRAIL": LOG_TYPE_GUARDRAIL,
     "EVALUATOR": "task",
     "PROMPT": "task",
     "UNKNOWN": "task",
@@ -145,6 +147,11 @@ _OI_KIND_TO_LOG_TYPE: Dict[str, str] = {
 
 # OI span kinds that represent LLM calls
 _LLM_KINDS = {"LLM", "EMBEDDING"}
+
+_OI_LLM_REQUEST_KINDS: Dict[str, str] = {
+    "LLM": "chat",
+    "EMBEDDING": "embedding",
+}
 
 # Invocation parameter key → OpenLLMetry target attribute
 _INVOCATION_PARAM_MAP: Dict[str, str] = {
@@ -352,12 +359,13 @@ class OpenInferenceTranslator(SpanProcessor):
 
         # --- LLM-specific: messages, invocation params, tools ---
         if oi_kind_upper in _LLM_KINDS:
-            self._translate_llm(attrs)
+            self._translate_llm(attrs, oi_kind_upper)
 
-    def _translate_llm(self, attrs: Dict[str, Any]) -> None:
+    def _translate_llm(self, attrs: Dict[str, Any], oi_kind_upper: str) -> None:
         """Extra translation for LLM/EMBEDDING spans."""
-        # Mark as chat request type
-        attrs.setdefault(LLM_REQUEST_TYPE, "chat")
+        llm_request_type = _OI_LLM_REQUEST_KINDS.get(oi_kind_upper)
+        if llm_request_type:
+            attrs.setdefault(LLM_REQUEST_TYPE, llm_request_type)
 
         # --- Messages (reverse of Arize _collect_oi_messages) ---
         _oi_messages_to_openllmetry(attrs, "llm.input_messages.", "gen_ai.prompt")
