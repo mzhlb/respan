@@ -1,0 +1,6 @@
+{
+  "summary": "Clarify how to filter non-Respan child spans out of respan-tracing exports without publishing a package release",
+  "packages": {
+    "respan-tracing": "none"
+  }
+}
