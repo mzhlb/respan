@@ -1,6 +1,6 @@
 {
-  "summary": "Clarify how to filter non-Respan child spans out of respan-tracing exports without publishing a package release",
+  "summary": "Publish an updated respan-tracing README that explains how to filter non-Respan child spans out of exported traces",
   "packages": {
-    "respan-tracing": "none"
+    "respan-tracing": "patch"
   }
 }
