@@ -173,6 +173,12 @@
       "name": "respan-instrumentation-instructor",
       "path": "python-sdks/instrumentations/respan-instrumentation-instructor",
       "registry": "pypi"
+    },
+    {
+      "ecosystem": "python",
+      "name": "respan-instrumentation-agno",
+      "path": "python-sdks/instrumentations/respan-instrumentation-agno",
+      "registry": "pypi"
     }
   ]
 }
