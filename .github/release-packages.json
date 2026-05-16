@@ -155,6 +155,12 @@
       "name": "respan-instrumentation-pipecat",
       "path": "python-sdks/instrumentations/respan-instrumentation-pipecat",
       "registry": "pypi"
+    },
+    {
+      "ecosystem": "python",
+      "name": "respan-instrumentation-dspy",
+      "path": "python-sdks/instrumentations/respan-instrumentation-dspy",
+      "registry": "pypi"
     }
   ]
 }
