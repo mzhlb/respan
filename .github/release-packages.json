@@ -161,6 +161,12 @@
       "name": "respan-instrumentation-dspy",
       "path": "python-sdks/instrumentations/respan-instrumentation-dspy",
       "registry": "pypi"
+    },
+    {
+      "ecosystem": "python",
+      "name": "respan-instrumentation-llama-index",
+      "path": "python-sdks/instrumentations/respan-instrumentation-llama-index",
+      "registry": "pypi"
     }
   ]
 }
