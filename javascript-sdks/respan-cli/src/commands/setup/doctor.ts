@@ -5,15 +5,8 @@ import { execSync } from 'node:child_process';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../lib/base-command.js';
 import { findProjectRoot, expandHome, readTextFile } from '../../lib/integrate.js';
-
-const GREEN = '\x1b[32m';
-const RED = '\x1b[31m';
-const YELLOW = '\x1b[33m';
-const DIM = '\x1b[2m';
-const BOLD = '\x1b[1m';
-const RESET = '\x1b[0m';
-
-type CliTool = 'claude-code' | 'cursor' | 'codex-cli' | 'gemini-cli' | 'opencode';
+import { GREEN, RED, YELLOW, DIM, BOLD, RESET } from '../../lib/colors.js';
+import { CliTool, isBinaryInstalled } from '../../lib/agents.js';
 
 interface ToolCheck {
   tool: CliTool;
@@ -83,7 +76,7 @@ export default class SetupDoctor extends BaseCommand {
 
     // ── 2. Respan CLI ──────────────────────────────────────────────
     this.log(`  ${BOLD}Respan CLI${RESET}`);
-    const respanInstalled = this.isBinaryInstalled('respan');
+    const respanInstalled = isBinaryInstalled('respan');
     if (respanInstalled) {
       try {
         const version = execSync('respan --version', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
@@ -144,7 +137,7 @@ export default class SetupDoctor extends BaseCommand {
     };
 
     for (const [id, tool] of Object.entries(tools)) {
-      const binaryFound = this.isBinaryInstalled(tool.binary);
+      const binaryFound = isBinaryInstalled(tool.binary);
 
       this.log(`    ${BOLD}${tool.name}${RESET} ${DIM}(${tool.binary})${RESET}`);
 
@@ -240,14 +233,5 @@ export default class SetupDoctor extends BaseCommand {
       this.log(`    ${DIM}\u2013${RESET} No global docs`);
     }
     this.log('');
-  }
-
-  private isBinaryInstalled(binary: string): boolean {
-    try {
-      execSync(`command -v ${binary}`, { stdio: 'pipe' });
-      return true;
-    } catch {
-      return false;
-    }
   }
 }
