@@ -15,7 +15,6 @@ export interface ToolMeta {
   binary: string;
   description: string;
   configDirs: string[];
-  agentSkillsDir: string;
 }
 
 export const CLI_TOOLS: Record<CliTool, ToolMeta> = {
@@ -24,35 +23,30 @@ export const CLI_TOOLS: Record<CliTool, ToolMeta> = {
     binary: 'claude',
     description: 'Anthropic\'s coding agent',
     configDirs: ['~/.claude', '.claude'],
-    agentSkillsDir: '.claude',
   },
   'cursor': {
     name: 'Cursor',
     binary: 'cursor',
     description: 'AI-powered code editor',
     configDirs: ['.cursor', '.cursorrc'],
-    agentSkillsDir: '.cursor',
   },
   'codex-cli': {
     name: 'Codex CLI',
     binary: 'codex',
     description: 'OpenAI\'s coding agent',
     configDirs: ['~/.codex', '.codex'],
-    agentSkillsDir: '.codex',
   },
   'gemini-cli': {
     name: 'Gemini CLI',
     binary: 'gemini',
     description: 'Google\'s coding agent',
     configDirs: ['~/.gemini', '.gemini'],
-    agentSkillsDir: '.gemini',
   },
   'opencode': {
     name: 'OpenCode',
     binary: 'opencode',
     description: 'Open-source coding agent',
     configDirs: ['.opencode'],
-    agentSkillsDir: '.opencode',
   },
 };
 

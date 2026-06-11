@@ -1,8 +1,12 @@
 import * as path from 'node:path';
 import * as os from 'node:os';
+import * as fs from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
+import { Flags } from '@oclif/core';
 import { input, select, confirm } from '@inquirer/prompts';
 import { BaseCommand } from './base-command.js';
+import { getCredential, setCredential } from './config.js';
+import { DEFAULT_BASE_URL } from './auth.js';
 import { printBanner } from './banner.js';
 import {
   findProjectRoot,
@@ -19,11 +23,7 @@ import {
   detectAgents,
   isBinaryInstalled,
 } from './agents.js';
-import {
-  getSkillMd,
-  TRACING_SETUP_MD,
-  GATEWAY_SETUP_MD,
-} from './skill-content.js';
+import { getSkillMd } from './skill-content.js';
 import {
   TRACING_MD,
   GATEWAY_MD,
@@ -49,17 +49,26 @@ interface RunSetupOptions {
  * every other command extends.
  */
 export abstract class SetupBaseCommand extends BaseCommand {
+  // `setup` is an interactive wizard — it has no structured output, so the
+  // inherited --json/--csv flags are meaningless here. Hide them so they don't
+  // show up in `respan setup --help` advertising a mode that does nothing.
+  static baseFlags = {
+    ...BaseCommand.baseFlags,
+    json: Flags.boolean({ hidden: true, default: false }),
+    csv: Flags.boolean({ hidden: true, default: false }),
+  };
+
   // ── Orchestrator ───────────────────────────────────────────────────────
 
   /**
    * Shared setup flow for all three entry points.
    *
-   *   1. askApiKey()
+   *   1. askApiKey()       // .env → global credential → prompt
    *   2. if mode is undefined → ask "Tracing or Gateway?" (interactive only)
-   *   3. verifyApiKey(mode)
-   *   4. selectAgent()
-   *   5. installSkill()        // full bundle, mode-independent
-   *   6. launchAgent(mode)
+   *   3. verifyApiKey(mode) // gateway gates on credits; tracing warns + continues
+   *   4. selectAgent()      // drives only the launch
+   *   5. installSkill()     // full bundle, for all agents, regardless of selection
+   *   6. launchAgent(mode)  // only if an agent was selected
    */
   protected async runSetup(mode?: SetupMode, opts: RunSetupOptions = {}): Promise<void> {
     await printBanner();
@@ -74,21 +83,21 @@ export abstract class SetupBaseCommand extends BaseCommand {
     // ── Step 2: What to set up (interactive only) ────────────────────
     let resolvedMode: SetupMode = mode ?? (await this.askMode());
 
-    await this.verifyApiKey(apiKey, resolvedMode);
-
-    // ── Step 3: Choose agent ─────────────────────────────────────────
-    this.logStep(3, 'Choose your coding agent');
-    const detected = detectAgents(projectRoot, home);
-    const selectedTool = await this.selectAgent(opts.agent as CliTool | undefined, detected);
-
-    if (!selectedTool) {
-      this.log(`  ${DIM}No agent selected. You can always run ${RESET}respan setup${DIM} again.${RESET}`);
+    const verified = await this.verifyApiKey(apiKey, resolvedMode, projectRoot);
+    if (!verified) {
+      this.log('');
+      this.log(`  ${DIM}Setup paused. Run ${RESET}respan setup gateway${DIM} again once your gateway access is ready.${RESET}`);
       return;
     }
 
-    // ── Step 4: Install skill ────────────────────────────────────────
+    // ── Step 3: Choose agent (drives only the launch) ────────────────
+    this.logStep(3, 'Open which coding agent?');
+    const detected = detectAgents(projectRoot, home);
+    const selectedTool = await this.selectAgent(opts.agent as CliTool | undefined, detected);
+
+    // ── Step 4: Install skill (for all agents, regardless of selection) ─
     this.logStep(4, 'Install skill');
-    await this.installSkill(selectedTool, projectRoot);
+    await this.installSkill();
 
     // ── Done ─────────────────────────────────────────────────────────
     this.log('');
@@ -105,9 +114,11 @@ export abstract class SetupBaseCommand extends BaseCommand {
 
     this.notifySetup(this.getGitEmail()).catch(() => {});
 
-    // ── Step 5: Open agent ───────────────────────────────────────────
-    if (!opts.noInstrument) {
+    // ── Step 5: Open agent (only if one was selected) ────────────────
+    if (selectedTool && !opts.noInstrument) {
       await this.launchAgent(selectedTool, projectRoot, resolvedMode);
+    } else if (!selectedTool) {
+      this.log(`  ${DIM}No agent selected — the skill is installed. Open your agent any time and use the ${RESET}/respan${DIM} skill.${RESET}`);
     }
   }
 
@@ -135,37 +146,66 @@ export abstract class SetupBaseCommand extends BaseCommand {
     const existingEnv = readTextFile(envPath);
     const existingKey = this.extractEnvVar(existingEnv, 'RESPAN_API_KEY');
 
+    // 1. A key already in .env is the project source of truth — use it as-is.
     if (existingKey) {
       const masked = existingKey.slice(0, 8) + '...' + existingKey.slice(-4);
-      this.log(`  ${PC}Found existing API key:${RESET} ${masked}`);
-      const keep = await confirm({
-        message: 'Keep this API key?',
-        default: true,
-      });
-      if (keep) return existingKey;
+      this.log(`  ${GREEN}✓${RESET} Using API key from ${DIM}.env${RESET} ${DIM}(${masked})${RESET}`);
+      return existingKey;
     }
 
+    // 2. Offer the global credential (if it is an API key) for reuse.
+    const globalCred = getCredential();
+    if (globalCred && globalCred.type === 'api_key' && globalCred.apiKey) {
+      const masked = globalCred.apiKey.slice(0, 8) + '...' + globalCred.apiKey.slice(-4);
+      const useGlobal = await confirm({
+        message: `Use your saved Respan key (${masked})?`,
+        default: true,
+      });
+      if (useGlobal) {
+        this.saveToEnv(envPath, existingEnv, 'RESPAN_API_KEY', globalCred.apiKey);
+        this.log(`  ${GREEN}✓${RESET} Saved API key to ${DIM}${envPath}${RESET}`);
+        return globalCred.apiKey;
+      }
+    }
+
+    // 3. No usable key — collect one from the platform.
     this.log('');
     this.log(`  ${DIM}Get your API key at ${RESET}https://platform.respan.ai/settings/api-keys`);
     this.log('');
 
-    const apiKey = await input({
+    const entered = await input({
       message: 'Enter your Respan API key:',
       validate: (val) => val.trim().length > 0 || 'API key is required',
     });
+    const apiKey = entered.trim();
 
-    this.saveToEnv(envPath, existingEnv, 'RESPAN_API_KEY', apiKey.trim());
+    this.saveToEnv(envPath, existingEnv, 'RESPAN_API_KEY', apiKey);
     this.log(`  ${GREEN}✓${RESET} Saved API key to ${DIM}${envPath}${RESET}`);
 
-    return apiKey.trim();
+    // 4. Offer to persist it globally for other projects.
+    const saveGlobal = await confirm({
+      message: 'Save this key globally for use in other projects?',
+      default: true,
+    });
+    if (saveGlobal) {
+      setCredential('default', { type: 'api_key', apiKey, baseUrl: DEFAULT_BASE_URL });
+      this.log(`  ${GREEN}✓${RESET} Saved globally ${DIM}(~/.respan/credentials.json)${RESET}`);
+    }
+
+    return apiKey;
   }
 
-  protected async verifyApiKey(apiKey: string, mode: SetupMode): Promise<void> {
+  /**
+   * Verify the key for the chosen mode. Tracing always returns true (it warns
+   * and continues on failure). Gateway gates: it returns false if the user
+   * abandons the credit/key check, so the caller can pause setup.
+   */
+  protected async verifyApiKey(apiKey: string, mode: SetupMode, projectRoot: string): Promise<boolean> {
     if (mode === 'gateway') {
-      await this.verifyGatewayKey(apiKey);
-    } else {
-      await this.verifyTracingKey(apiKey);
+      return this.verifyGatewayKey(apiKey, projectRoot);
     }
+    await this.verifyTracingKey(apiKey);
+    return true;
   }
 
   private async verifyTracingKey(apiKey: string): Promise<void> {
@@ -205,62 +245,87 @@ export abstract class SetupBaseCommand extends BaseCommand {
     }
   }
 
-  private async verifyGatewayKey(apiKey: string): Promise<void> {
-    const spinner = createSpinner('Verifying gateway access');
-    spinner.start();
+  /**
+   * Gateway verification gates on a real request succeeding. There is no
+   * credit-balance endpoint, so a 200 is the only proof the account has both a
+   * valid key AND a positive credit balance. On failure we surface the most
+   * likely cause (no credits) and loop: each time the user says "proceed" we
+   * fire a fresh probe. A clearly-invalid key (401/403) is special-cased to
+   * re-enter the key, since re-checking the same bad key would loop forever.
+   *
+   * Returns true once a probe succeeds, false if the user abandons the gate.
+   */
+  private async verifyGatewayKey(apiKey: string, projectRoot: string): Promise<boolean> {
+    const envPath = path.join(projectRoot, '.env');
+    let key = apiKey;
 
-    try {
-      const response = await fetch('https://api.respan.ai/api/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(this.buildDemoCompletion()),
-      });
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const spinner = createSpinner('Verifying gateway access');
+      spinner.start();
 
-      if (response.ok) {
-        spinner.succeed('Gateway access verified');
-        this.log('');
-        this.log(`  ${PC}A demo request was routed through the gateway.${RESET}`);
-        this.log(`  ${DIM}View it at ${RESET}https://platform.respan.ai${DIM} or run ${RESET}respan logs list --limit 5`);
-        this.log('');
-        await confirm({ message: 'Ready to continue?', default: true });
-        return;
+      let status = 0;
+      let networkError = false;
+      try {
+        const response = await fetch('https://api.respan.ai/api/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(this.buildDemoCompletion()),
+        });
+        status = response.status;
+
+        if (response.ok) {
+          spinner.succeed('Gateway access verified');
+          this.log('');
+          this.log(`  ${PC}A demo request was routed through the gateway.${RESET}`);
+          this.log(`  ${DIM}View it at ${RESET}https://platform.respan.ai${DIM} or run ${RESET}respan logs list --limit 5`);
+          this.log('');
+          await confirm({ message: 'Ready to continue?', default: true });
+          return true;
+        }
+      } catch {
+        networkError = true;
       }
 
-      if (response.status === 401 || response.status === 403) {
+      // Invalid key — distinct failure with a different fix. Re-checking the
+      // same key would never succeed, so offer to enter a different one.
+      if (status === 401 || status === 403) {
         spinner.fail('Invalid API key');
-        this.warn('  Check your key at https://platform.respan.ai/settings/api-keys');
-        return;
+        const reenter = await confirm({
+          message: 'That key was rejected. Enter a different API key?',
+          default: true,
+        });
+        if (!reenter) return false;
+        const existingEnv = readTextFile(envPath);
+        const newKey = await input({
+          message: 'Enter your Respan API key:',
+          validate: (val) => val.trim().length > 0 || 'API key is required',
+        });
+        key = newKey.trim();
+        this.saveToEnv(envPath, existingEnv, 'RESPAN_API_KEY', key);
+        continue;
       }
 
-      // Distinguish "out of credits" from a configured limit policy.
-      // NOTE (provisional): limits.md documents 429 for configured limit
-      // policies but does not document the credit-exhaustion response. The
-      // 402/credits branch is provisional — verify against a real
-      // out-of-credits response and patch this classifier.
-      const body = await response.text().catch(() => '');
-      const looksLikeCredits =
-        response.status === 402 || /credit/i.test(body);
-
-      if (looksLikeCredits) {
-        spinner.fail('Account is out of Respan credits');
-        this.warn('  Add credits at https://platform.respan.ai to use the gateway.');
-        return;
-      }
-
-      if (response.status === 429) {
-        spinner.fail('Usage limit reached');
-        this.warn('  You\'ve hit a usage limit — adjust it at https://platform.respan.ai/platform/api/limits');
-        return;
-      }
-
-      spinner.fail(`Gateway verification failed (status: ${response.status})`);
-      this.warn('  Setup will continue — verify manually at https://platform.respan.ai');
-    } catch {
-      spinner.fail('Could not verify gateway access (network error)');
-      this.warn('  Setup will continue — verify manually at https://platform.respan.ai');
+      // Any other failure (including network) — the most likely cause is no
+      // credits. Gate until the user adds them and asks to re-check.
+      spinner.fail(
+        networkError
+          ? 'Could not reach the gateway (network error)'
+          : `Gateway request failed (status: ${status})`,
+      );
+      this.log('');
+      this.log(`  ${DIM}A positive credit balance is required to use the gateway.${RESET}`);
+      this.log(`  ${DIM}Add credits at ${RESET}https://platform.respan.ai/platform/api/billing`);
+      this.log('');
+      const recheck = await confirm({
+        message: 'Re-check now? (choose No to exit setup)',
+        default: true,
+      });
+      if (!recheck) return false;
+      // loop — fires a fresh probe
     }
   }
 
@@ -495,19 +560,19 @@ export abstract class SetupBaseCommand extends BaseCommand {
 
   // ── Install skill ──────────────────────────────────────────────────────
 
-  protected async installSkill(
-    _tool: CliTool,
-    _projectRoot: string,
-  ): Promise<void> {
+  protected async installSkill(): Promise<void> {
     const home = os.homedir();
 
     const writeSkillTo = (baseDir: string) => {
       const skillDir = path.join(baseDir, 'respan');
       const refsDir = path.join(skillDir, 'references');
+      // Wipe any prior install first so docs we've since renamed or removed
+      // (e.g. the old tracing-setup.md / gateway-setup.md / setup.md) don't
+      // linger as orphans alongside the current bundle. This dir is entirely
+      // Respan-managed, so a clean rewrite is safe.
+      fs.rmSync(skillDir, { recursive: true, force: true });
       ensureDir(refsDir);
       writeTextFile(path.join(skillDir, 'SKILL.md'), getSkillMd());
-      writeTextFile(path.join(refsDir, 'tracing-setup.md'), TRACING_SETUP_MD);
-      writeTextFile(path.join(refsDir, 'gateway-setup.md'), GATEWAY_SETUP_MD);
       writeTextFile(path.join(refsDir, 'tracing.md'), TRACING_MD);
       writeTextFile(path.join(refsDir, 'gateway.md'), GATEWAY_MD);
       writeTextFile(path.join(refsDir, 'prompts.md'), PROMPTS_MD);
@@ -553,20 +618,14 @@ export abstract class SetupBaseCommand extends BaseCommand {
     this.log('');
 
     const setupPrompt = mode === 'gateway'
-      ? 'Use the /respan skill to set up Respan gateway routing in this project. Read gateway-setup.md from the skill and follow the steps to route the detected framework through the gateway.'
-      : 'Use the /respan skill to set up Respan SDK tracing in this project. Read tracing-setup.md from the skill and follow the steps.';
+      ? 'Use the /respan skill to set up Respan gateway routing in this project. Read gateway.md from the skill and follow the Setup steps to route the detected framework through the gateway.'
+      : 'Use the /respan skill to set up Respan SDK tracing in this project. Read tracing.md from the skill and follow the Setup steps.';
 
     if (tool === 'cursor') {
       this.log('');
       this.log(`  ${PC}Next step:${RESET} In Cursor's agent chat, type ${BOLD}/respan${RESET} to set up ${what}.`);
       this.log('');
-      const openCursor = await confirm({
-        message: 'Open Cursor now?',
-        default: true,
-      });
-      if (openCursor) {
-        spawnSync('cursor', ['.'], { stdio: 'inherit', cwd: projectRoot });
-      }
+      spawnSync('cursor', ['.'], { stdio: 'inherit', cwd: projectRoot });
       return;
     } else if (tool === 'claude-code') {
       spawnSync(meta.binary, ['--permission-mode', 'acceptEdits', setupPrompt], {

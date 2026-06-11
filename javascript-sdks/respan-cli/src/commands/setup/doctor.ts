@@ -99,40 +99,40 @@ export default class SetupDoctor extends BaseCommand {
         name: 'Claude Code',
         globalConfigs: ['~/.claude/settings.json'],
         localConfigs: ['.claude/settings.local.json'],
-        globalSkills: ['~/.claude/skills/respan/SKILL.md', '~/.agents/skills/respan/SKILL.md'],
-        localSkills: ['.claude/skills/respan/SKILL.md', '.agents/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md'],
       },
       'cursor': {
         binary: 'cursor',
         name: 'Cursor',
         globalConfigs: ['~/.cursor/rules'],
         localConfigs: ['.cursor/rules'],
-        globalSkills: ['~/.cursor/skills/respan/SKILL.md', '~/.agents/skills/respan/SKILL.md'],
-        localSkills: ['.cursor/skills/respan/SKILL.md', '.agents/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md', '~/.cursor/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md', '.cursor/skills/respan/SKILL.md'],
       },
       'codex-cli': {
         binary: 'codex',
         name: 'Codex CLI',
         globalConfigs: ['~/.codex/config.toml'],
         localConfigs: ['.codex/respan.json'],
-        globalSkills: ['~/.codex/skills/respan/SKILL.md', '~/.agents/skills/respan/SKILL.md'],
-        localSkills: ['.codex/skills/respan/SKILL.md', '.agents/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md', '~/.codex/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md', '.codex/skills/respan/SKILL.md'],
       },
       'gemini-cli': {
         binary: 'gemini',
         name: 'Gemini CLI',
         globalConfigs: ['~/.gemini/settings.json'],
         localConfigs: ['.gemini/settings.json'],
-        globalSkills: ['~/.gemini/skills/respan/SKILL.md', '~/.agents/skills/respan/SKILL.md'],
-        localSkills: ['.gemini/skills/respan/SKILL.md', '.agents/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md', '~/.gemini/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md', '.gemini/skills/respan/SKILL.md'],
       },
       'opencode': {
         binary: 'opencode',
         name: 'OpenCode',
         globalConfigs: ['~/.config/opencode'],
         localConfigs: ['.opencode'],
-        globalSkills: ['~/.config/opencode/skills/respan/SKILL.md', '~/.agents/skills/respan/SKILL.md'],
-        localSkills: ['.opencode/skills/respan/SKILL.md', '.agents/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md', '~/.config/opencode/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md', '.opencode/skills/respan/SKILL.md'],
       },
     };
 
@@ -166,24 +166,21 @@ export default class SetupDoctor extends BaseCommand {
         }
       }
 
-      // Skills
+      // Skills \u2014 paths are ordered primary (~/.agents, ~/.claude) first, then
+      // the tool-specific dir as a fallback. Report the first match.
       let hasSkill = false;
       if (checkGlobal) {
-        for (const skill of tool.globalSkills) {
-          const resolved = expandHome(skill);
-          if (fs.existsSync(resolved)) {
-            this.log(`      ${GREEN}\u2713${RESET} Global skill: ${DIM}${skill}${RESET}`);
-            hasSkill = true;
-          }
+        const found = tool.globalSkills.find((skill) => fs.existsSync(expandHome(skill)));
+        if (found) {
+          this.log(`      ${GREEN}\u2713${RESET} Global skill: ${DIM}${found}${RESET}`);
+          hasSkill = true;
         }
       }
       if (checkLocal) {
-        for (const skill of tool.localSkills) {
-          const resolved = path.join(projectRoot, skill);
-          if (fs.existsSync(resolved)) {
-            this.log(`      ${GREEN}\u2713${RESET} Local skill: ${DIM}${skill}${RESET}`);
-            hasSkill = true;
-          }
+        const found = tool.localSkills.find((skill) => fs.existsSync(path.join(projectRoot, skill)));
+        if (found) {
+          this.log(`      ${GREEN}\u2713${RESET} Local skill: ${DIM}${found}${RESET}`);
+          hasSkill = true;
         }
       }
 

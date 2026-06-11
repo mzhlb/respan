@@ -1,4 +1,6 @@
+import * as path from 'node:path';
 import { getCredential, Credential } from './config.js';
+import { findProjectRoot, readTextFile } from './integrate.js';
 
 export const DEFAULT_BASE_URL = 'https://api.respan.ai';
 export const ENTERPRISE_BASE_URL = 'https://endpoint.respan.ai';
@@ -22,6 +24,24 @@ function resolveConfiguredBaseUrl(credential?: Credential, flagBaseUrl?: string)
   );
 }
 
+/**
+ * Read RESPAN_API_KEY straight from the current project's `.env`. `respan setup`
+ * writes the key there as the project source of truth, so reading it here lets
+ * in-project CLI commands (e.g. `respan logs list`) work right after setup
+ * without a separate `respan auth login`. The project `.env` is the project
+ * source of truth; the global credentials.json is only the cross-project cache.
+ */
+function readProjectEnvKey(): string | undefined {
+  try {
+    const envPath = path.join(findProjectRoot(), '.env');
+    const match = readTextFile(envPath).match(/^RESPAN_API_KEY=(.+)$/m);
+    if (!match) return undefined;
+    return match[1].replace(/^["']|["']$/g, '').trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function resolveAuth(flags: { 'api-key'?: string; 'base-url'?: string; profile?: string }): AuthConfig {
   const credential = getCredential(flags.profile);
   const baseUrl = resolveConfiguredBaseUrl(credential, flags['base-url']);
@@ -34,6 +54,12 @@ export function resolveAuth(flags: { 'api-key'?: string; 'base-url'?: string; pr
       apiKey: process.env.RESPAN_API_KEY,
       baseUrl,
     };
+  }
+  // The project's .env key takes precedence over the global credential: if
+  // you're inside a project that setup configured, that key is what you mean.
+  const projectEnvKey = readProjectEnvKey();
+  if (projectEnvKey) {
+    return { apiKey: projectEnvKey, baseUrl };
   }
   if (credential) {
     return credentialToAuth(credential, baseUrl);
