@@ -278,14 +278,10 @@ export abstract class SetupBaseCommand extends BaseCommand {
   }
 
   /**
-   * Gateway verification gates on a real request succeeding. There is no
-   * credit-balance endpoint, so a 200 is the only proof the account has both a
-   * valid key AND a positive credit balance. On failure we surface the most
-   * likely cause (no credits) and loop: each time the user says "proceed" we
-   * fire a fresh probe. A clearly-invalid key (401/403) is special-cased to
-   * re-enter the key, since re-checking the same bad key would loop forever.
-   *
-   * Returns true once a probe succeeds, false if the user abandons the gate.
+   * Gateway verification gates on a real request succeeding: there is no
+   * credit-balance endpoint, so a 200 is the only proof of a valid key with a
+   * positive balance. A rejected key (401/403) re-prompts; any other failure
+   * loops on the user's say-so. Returns true on success, false if abandoned.
    */
   private async verifyGatewayKey(apiKey: string, projectRoot: string): Promise<boolean> {
     const envPath = path.join(projectRoot, '.env');
@@ -322,8 +318,7 @@ export abstract class SetupBaseCommand extends BaseCommand {
         networkError = true;
       }
 
-      // Invalid key — distinct failure with a different fix. Re-checking the
-      // same key would never succeed, so offer to enter a different one.
+      // A rejected key won't pass on retry — offer to enter a different one.
       if (status === 401 || status === 403) {
         spinner.fail('Invalid API key');
         const reenter = await confirm({
@@ -331,33 +326,31 @@ export abstract class SetupBaseCommand extends BaseCommand {
           default: true,
         });
         if (!reenter) return false;
-        const existingEnv = readTextFile(envPath);
-        const newKey = await input({
-          message: 'Enter your Respan API key:',
-          validate: (val) => val.trim().length > 0 || 'API key is required',
-        });
-        key = newKey.trim();
-        this.saveToEnv(envPath, existingEnv, 'RESPAN_API_KEY', key);
+        key = await this.reenterApiKey(envPath);
         continue;
       }
 
-      // Any other failure (including network) — the most likely cause is no
-      // credits. Gate until the user adds them and asks to re-check.
+      // 402 means no credits; anything else (429, 5xx, network) is a transient
+      // failure — don't point those users at the billing page.
       spinner.fail(
         networkError
           ? 'Could not reach the gateway (network error)'
           : `Gateway request failed (status: ${status})`,
       );
       this.log('');
-      this.log(`  ${DIM}A positive credit balance is required to use the gateway.${RESET}`);
-      this.log(`  ${DIM}Add credits at ${RESET}https://platform.respan.ai/platform/api/billing`);
+      if (status === 402) {
+        this.log(`  ${DIM}A positive credit balance is required to use the gateway.${RESET}`);
+        this.log(`  ${DIM}Add credits at ${RESET}https://platform.respan.ai/platform/api/billing`);
+      } else {
+        this.log(`  ${DIM}The request didn't go through. This may be temporary, please try again.${RESET}`);
+      }
       this.log('');
       const recheck = await confirm({
         message: 'Re-check now? (choose No to exit setup)',
         default: true,
       });
       if (!recheck) return false;
-      // loop — fires a fresh probe
+      // loop -> fires a fresh probe
     }
   }
 
