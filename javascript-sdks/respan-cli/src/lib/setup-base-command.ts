@@ -13,6 +13,7 @@ import {
   writeTextFile,
   readTextFile,
   ensureDir,
+  extractEnvVar,
 } from './integrate.js';
 import { createSpinner } from './spinner.js';
 import { PC, RESET, DIM, GREEN, BOLD } from './colors.js';
@@ -144,7 +145,7 @@ export abstract class SetupBaseCommand extends BaseCommand {
   protected async askApiKey(projectRoot: string): Promise<string> {
     const envPath = path.join(projectRoot, '.env');
     const existingEnv = readTextFile(envPath);
-    const existingKey = this.extractEnvVar(existingEnv, 'RESPAN_API_KEY');
+    const existingKey = extractEnvVar(existingEnv, 'RESPAN_API_KEY');
 
     // 1. A key already in .env is the project source of truth — use it as-is.
     if (existingKey) {
@@ -647,12 +648,6 @@ export abstract class SetupBaseCommand extends BaseCommand {
     this.log('');
     this.log(`  ${PC}${BOLD}Step ${num}:${RESET} ${BOLD}${label}${RESET}`);
     this.log('');
-  }
-
-  protected extractEnvVar(envContent: string, key: string): string | undefined {
-    const match = envContent.match(new RegExp(`^${key}=(.+)$`, 'm'));
-    if (!match) return undefined;
-    return match[1].replace(/^["']|["']$/g, '').trim();
   }
 
   protected saveToEnv(envPath: string, existingContent: string, key: string, value: string): void {

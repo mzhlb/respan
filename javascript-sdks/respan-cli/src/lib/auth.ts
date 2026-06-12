@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { getCredential, Credential } from './config.js';
-import { findProjectRoot, readTextFile } from './integrate.js';
+import { findProjectRoot, readTextFile, extractEnvVar } from './integrate.js';
 
 export const DEFAULT_BASE_URL = 'https://api.respan.ai';
 export const ENTERPRISE_BASE_URL = 'https://endpoint.respan.ai';
@@ -25,18 +25,13 @@ function resolveConfiguredBaseUrl(credential?: Credential, flagBaseUrl?: string)
 }
 
 /**
- * Read RESPAN_API_KEY straight from the current project's `.env`. `respan setup`
- * writes the key there as the project source of truth, so reading it here lets
- * in-project CLI commands (e.g. `respan logs list`) work right after setup
- * without a separate `respan auth login`. The project `.env` is the project
- * source of truth; the global credentials.json is only the cross-project cache.
+ * Read RESPAN_API_KEY from the project's `.env`. setup writes it there as the
+ * project source of truth, so in-project commands (e.g. `respan logs list`)
+ * work right after setup without a separate `respan auth login`.
  */
 function readProjectEnvKey(): string | undefined {
   try {
-    const envPath = path.join(findProjectRoot(), '.env');
-    const match = readTextFile(envPath).match(/^RESPAN_API_KEY=(.+)$/m);
-    if (!match) return undefined;
-    return match[1].replace(/^["']|["']$/g, '').trim() || undefined;
+    return extractEnvVar(readTextFile(path.join(findProjectRoot(), '.env')), 'RESPAN_API_KEY');
   } catch {
     return undefined;
   }
