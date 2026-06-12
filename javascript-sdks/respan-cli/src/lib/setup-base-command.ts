@@ -588,14 +588,28 @@ export abstract class SetupBaseCommand extends BaseCommand {
   protected async installSkill(): Promise<void> {
     const home = os.homedir();
 
+    // Only a recognisably-ours, real directory is safe to wipe. Never delete a
+    // symlink (e.g. one linked from a dotfiles repo) or a dir holding files we
+    // didn't write — overwrite those in place instead.
+    const isManagedSkillDir = (skillDir: string): boolean => {
+      try {
+        if (fs.lstatSync(skillDir).isSymbolicLink()) return false;
+        const skillMd = path.join(skillDir, 'SKILL.md');
+        return fs.existsSync(skillMd) && fs.readFileSync(skillMd, 'utf-8').startsWith('---\nname: respan');
+      } catch {
+        return false;
+      }
+    };
+
     const writeSkillTo = (baseDir: string) => {
       const skillDir = path.join(baseDir, 'respan');
       const refsDir = path.join(skillDir, 'references');
-      // Wipe any prior install first so docs we've since renamed or removed
-      // (e.g. the old tracing-setup.md / gateway-setup.md / setup.md) don't
-      // linger as orphans alongside the current bundle. This dir is entirely
-      // Respan-managed, so a clean rewrite is safe.
-      fs.rmSync(skillDir, { recursive: true, force: true });
+      // Wipe a prior install so docs we've since renamed or removed (e.g. the
+      // old tracing-setup.md / gateway-setup.md / setup.md) don't linger as
+      // orphans — but only when the dir is genuinely ours (see above).
+      if (isManagedSkillDir(skillDir)) {
+        fs.rmSync(skillDir, { recursive: true, force: true });
+      }
       ensureDir(refsDir);
       writeTextFile(path.join(skillDir, 'SKILL.md'), getSkillMd());
       writeTextFile(path.join(refsDir, 'tracing.md'), TRACING_MD);
