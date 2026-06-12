@@ -55,11 +55,14 @@ export function resolveAuth(flags: { 'api-key'?: string; 'base-url'?: string; pr
       baseUrl,
     };
   }
-  // The project's .env key takes precedence over the global credential: if
-  // you're inside a project that setup configured, that key is what you mean.
-  const projectEnvKey = readProjectEnvKey();
-  if (projectEnvKey) {
-    return { apiKey: projectEnvKey, baseUrl };
+  // The project .env key wins over a saved credential — but an explicit
+  // --profile selects a specific credential (and its base URL), so don't let
+  // an ambient .env key override that choice and break enterprise setups.
+  if (!flags.profile) {
+    const projectEnvKey = readProjectEnvKey();
+    if (projectEnvKey) {
+      return { apiKey: projectEnvKey, baseUrl };
+    }
   }
   if (credential) {
     return credentialToAuth(credential, baseUrl);
