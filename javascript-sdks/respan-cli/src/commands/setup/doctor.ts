@@ -99,40 +99,40 @@ export default class SetupDoctor extends BaseCommand {
         name: 'Claude Code',
         globalConfigs: ['~/.claude/settings.json'],
         localConfigs: ['.claude/settings.local.json'],
-        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md'],
-        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md'],
+        globalSkills: ['~/.claude/skills/respan/SKILL.md'],
+        localSkills: ['.claude/skills/respan/SKILL.md'],
       },
       'cursor': {
         binary: 'cursor',
         name: 'Cursor',
         globalConfigs: ['~/.cursor/rules'],
         localConfigs: ['.cursor/rules'],
-        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md', '~/.cursor/skills/respan/SKILL.md'],
-        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md', '.cursor/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.cursor/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.cursor/skills/respan/SKILL.md'],
       },
       'codex-cli': {
         binary: 'codex',
         name: 'Codex CLI',
         globalConfigs: ['~/.codex/config.toml'],
         localConfigs: ['.codex/respan.json'],
-        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md', '~/.codex/skills/respan/SKILL.md'],
-        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md', '.codex/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.codex/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.codex/skills/respan/SKILL.md'],
       },
       'gemini-cli': {
         binary: 'gemini',
         name: 'Gemini CLI',
         globalConfigs: ['~/.gemini/settings.json'],
         localConfigs: ['.gemini/settings.json'],
-        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md', '~/.gemini/skills/respan/SKILL.md'],
-        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md', '.gemini/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.gemini/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.gemini/skills/respan/SKILL.md'],
       },
       'opencode': {
         binary: 'opencode',
         name: 'OpenCode',
         globalConfigs: ['~/.config/opencode'],
         localConfigs: ['.opencode'],
-        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.claude/skills/respan/SKILL.md', '~/.config/opencode/skills/respan/SKILL.md'],
-        localSkills: ['.agents/skills/respan/SKILL.md', '.claude/skills/respan/SKILL.md', '.opencode/skills/respan/SKILL.md'],
+        globalSkills: ['~/.agents/skills/respan/SKILL.md', '~/.config/opencode/skills/respan/SKILL.md'],
+        localSkills: ['.agents/skills/respan/SKILL.md', '.opencode/skills/respan/SKILL.md'],
       },
     };
 
@@ -166,8 +166,9 @@ export default class SetupDoctor extends BaseCommand {
         }
       }
 
-      // Skills \u2014 paths are ordered primary (~/.agents, ~/.claude) first, then
-      // the tool-specific dir as a fallback. Report the first match.
+      // Skills \u2014 each tool only lists dirs it actually reads (the shared
+      // ~/.agents, or ~/.claude for Claude Code) plus its own dir as a
+      // fallback. Report the first match.
       let hasSkill = false;
       if (checkGlobal) {
         const found = tool.globalSkills.find((skill) => fs.existsSync(expandHome(skill)));

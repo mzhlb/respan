@@ -50,9 +50,8 @@ interface RunSetupOptions {
  * every other command extends.
  */
 export abstract class SetupBaseCommand extends BaseCommand {
-  // `setup` is an interactive wizard — it has no structured output, so the
-  // inherited --json/--csv flags are meaningless here. Hide them so they don't
-  // show up in `respan setup --help` advertising a mode that does nothing.
+  // setup is an interactive wizard with no structured output — hide the
+  // inherited --json/--csv flags so --help doesn't advertise dead options.
   static baseFlags = {
     ...BaseCommand.baseFlags,
     json: Flags.boolean({ hidden: true, default: false }),
@@ -77,12 +76,17 @@ export abstract class SetupBaseCommand extends BaseCommand {
     const projectRoot = findProjectRoot();
     const home = os.homedir();
 
-    // ── Step 1: API Key ──────────────────────────────────────────────
-    this.logStep(1, 'API Key');
+    // Step numbers are assigned sequentially. The mode question (Step 2) only
+    // runs for bare `respan setup`, so the concrete `setup tracing` / `setup
+    // gateway` commands renumber the later steps instead of leaving a gap.
+    let step = 1;
+
+    this.logStep(step++, 'API Key');
     const apiKey = await this.askApiKey(projectRoot);
 
-    // ── Step 2: What to set up (interactive only) ────────────────────
-    let resolvedMode: SetupMode = mode ?? (await this.askMode());
+    // Ask the mode only when a concrete command didn't already pin it.
+    const resolvedMode: SetupMode = mode ?? (await this.askMode(step));
+    if (mode === undefined) step++;
 
     const verified = await this.verifyApiKey(apiKey, resolvedMode, projectRoot);
     if (!verified) {
@@ -92,13 +96,12 @@ export abstract class SetupBaseCommand extends BaseCommand {
       return;
     }
 
-    // ── Step 3: Choose agent (drives only the launch) ────────────────
-    this.logStep(3, 'Open which coding agent?');
+    this.logStep(step++, 'Open which coding agent?');
     const detected = detectAgents(projectRoot, home);
     const selectedTool = await this.selectAgent(opts.agent as CliTool | undefined, detected);
 
-    // ── Step 4: Install skill (for all agents, regardless of selection) ─
-    this.logStep(4, 'Install skill');
+    // Install the full skill bundle for every agent, regardless of selection.
+    this.logStep(step++, 'Install skill');
     await this.installSkill();
 
     // ── Done ─────────────────────────────────────────────────────────
@@ -116,16 +119,16 @@ export abstract class SetupBaseCommand extends BaseCommand {
 
     this.notifySetup(this.getGitEmail()).catch(() => {});
 
-    // ── Step 5: Open agent (only if one was selected) ────────────────
+    // Open the agent only if one was selected.
     if (selectedTool && !opts.noInstrument) {
       await this.launchAgent(selectedTool, projectRoot, resolvedMode);
     } else if (!selectedTool) {
-      this.log(`  ${DIM}No agent selected — the skill is installed. Open your agent any time and use the ${RESET}/respan${DIM} skill.${RESET}`);
+      this.log(`  ${DIM}No agent selected, but the skill is installed. Open your agent any time and use the ${RESET}/respan${DIM} skill.${RESET}`);
     }
   }
 
-  protected async askMode(): Promise<SetupMode> {
-    this.logStep(2, 'What to set up');
+  protected async askMode(step: number): Promise<SetupMode> {
+    this.logStep(step, 'What to set up');
     return select<SetupMode>({
       message: 'What would you like to set up?',
       choices: [
@@ -639,7 +642,7 @@ export abstract class SetupBaseCommand extends BaseCommand {
     const what = mode === 'gateway' ? 'gateway routing' : 'SDK tracing';
 
     if (!isBinaryInstalled(meta.binary)) {
-      this.log(`  ${DIM}${meta.binary} is not installed. Install it first, then run it — it will pick up the setup skill.${RESET}`);
+      this.log(`  ${DIM}${meta.binary} is not installed. Install it first, then run it. It will pick up the setup skill.${RESET}`);
       return;
     }
 
@@ -649,7 +652,7 @@ export abstract class SetupBaseCommand extends BaseCommand {
     });
 
     if (!launch) {
-      this.log(`  ${DIM}Skipped. Run ${meta.binary} manually — it will find the setup skill.${RESET}`);
+      this.log(`  ${DIM}Skipped. Run ${meta.binary} manually, it will find the setup skill.${RESET}`);
       return;
     }
 
