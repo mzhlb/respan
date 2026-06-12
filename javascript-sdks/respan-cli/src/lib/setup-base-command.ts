@@ -66,7 +66,7 @@ export abstract class SetupBaseCommand extends BaseCommand {
    *
    *   1. askApiKey()       // .env → global credential → prompt
    *   2. if mode is undefined → ask "Tracing or Gateway?" (interactive only)
-   *   3. verifyApiKey(mode) // gateway gates on credits; tracing warns + continues
+   *   3. verifyApiKey(mode) // both re-prompt on a rejected key; can pause setup
    *   4. selectAgent()      // drives only the launch
    *   5. installSkill()     // full bundle, for all agents, regardless of selection
    *   6. launchAgent(mode)  // only if an agent was selected
@@ -86,8 +86,9 @@ export abstract class SetupBaseCommand extends BaseCommand {
 
     const verified = await this.verifyApiKey(apiKey, resolvedMode, projectRoot);
     if (!verified) {
+      const ready = resolvedMode === 'gateway' ? 'your gateway access is ready' : 'you have a valid API key';
       this.log('');
-      this.log(`  ${DIM}Setup paused. Run ${RESET}respan setup gateway${DIM} again once your gateway access is ready.${RESET}`);
+      this.log(`  ${DIM}Setup paused. Run ${RESET}respan setup ${resolvedMode}${DIM} again once ${ready}.${RESET}`);
       return;
     }
 
@@ -197,52 +198,82 @@ export abstract class SetupBaseCommand extends BaseCommand {
   }
 
   /**
-   * Verify the key for the chosen mode. Tracing always returns true (it warns
-   * and continues on failure). Gateway gates: it returns false if the user
-   * abandons the credit/key check, so the caller can pause setup.
+   * Verify the key for the chosen mode. Both paths re-prompt on a rejected key
+   * and return false if the user abandons the check, so the caller can pause
+   * setup instead of reporting success with a key that doesn't work.
    */
   protected async verifyApiKey(apiKey: string, mode: SetupMode, projectRoot: string): Promise<boolean> {
-    if (mode === 'gateway') {
-      return this.verifyGatewayKey(apiKey, projectRoot);
-    }
-    await this.verifyTracingKey(apiKey);
-    return true;
+    return mode === 'gateway'
+      ? this.verifyGatewayKey(apiKey, projectRoot)
+      : this.verifyTracingKey(apiKey, projectRoot);
   }
 
-  private async verifyTracingKey(apiKey: string): Promise<void> {
-    const spinner = createSpinner('Verifying API key');
-    spinner.start();
+  /** Prompt for a replacement key and persist it to the project .env. */
+  private async reenterApiKey(envPath: string): Promise<string> {
+    const existingEnv = readTextFile(envPath);
+    const entered = await input({
+      message: 'Enter your Respan API key:',
+      validate: (val) => val.trim().length > 0 || 'API key is required',
+    });
+    const key = entered.trim();
+    this.saveToEnv(envPath, existingEnv, 'RESPAN_API_KEY', key);
+    return key;
+  }
 
-    try {
-      const email = this.getGitEmail();
-      const payload = this.buildDemoTrace(email);
+  private async verifyTracingKey(apiKey: string, projectRoot: string): Promise<boolean> {
+    const envPath = path.join(projectRoot, '.env');
+    let key = apiKey;
 
-      const response = await fetch('https://api.respan.ai/api/v2/traces', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const spinner = createSpinner('Verifying API key');
+      spinner.start();
 
-      if (response.ok) {
+      let status = 0;
+      try {
+        const response = await fetch('https://api.respan.ai/api/v2/traces', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(this.buildDemoTrace(this.getGitEmail())),
+        });
+        status = response.status;
+      } catch {
+        // Network/transient failure — tracing is lenient, so warn and continue.
+        spinner.fail('Could not verify API key (network error)');
+        this.warn('  Setup will continue, please verify manually at https://platform.respan.ai');
+        return true;
+      }
+
+      if (status >= 200 && status < 300) {
         spinner.succeed('API key verified');
         this.log('');
         this.log(`  ${PC}A demo trace has been sent to your account.${RESET}`);
         this.log(`  ${DIM}View it at ${RESET}https://platform.respan.ai${DIM} to see what Respan traces look like.${RESET}`);
         this.log('');
         await confirm({ message: 'Ready to continue?', default: true });
-      } else if (response.status === 401 || response.status === 403) {
-        spinner.fail('Invalid API key');
-        this.warn('  Check your key at https://platform.respan.ai/settings/api-keys');
-      } else {
-        spinner.fail(`Verification failed (status: ${response.status})`);
-        this.warn('  Setup will continue — verify manually at https://platform.respan.ai');
+        return true;
       }
-    } catch {
-      spinner.fail('Could not verify API key (network error)');
-      this.warn('  Setup will continue — verify manually at https://platform.respan.ai');
+
+      // A rejected key is the one failure we can fix here — re-prompt so a stale
+      // .env key doesn't dead-end every run under a green "Setup complete!".
+      if (status === 401 || status === 403) {
+        spinner.fail('Invalid API key');
+        const reenter = await confirm({
+          message: 'That key was rejected. Enter a different API key?',
+          default: true,
+        });
+        if (!reenter) return false;
+        key = await this.reenterApiKey(envPath);
+        continue;
+      }
+
+      // Any other status — don't block setup on an unknown server state.
+      spinner.fail(`Verification failed (status: ${status})`);
+      this.warn('  Setup will continue, please verify manually at https://platform.respan.ai');
+      return true;
     }
   }
 
