@@ -33,6 +33,8 @@ import {
   TL_ENTITY_INPUT,
   TL_ENTITY_OUTPUT,
   TL_REQUEST_FUNCTIONS,
+  formatEmbeddingInput,
+  formatEmbeddingOutput,
   isVercelAISpan,
   metadataKey,
   resolveLogType,
@@ -81,6 +83,20 @@ export class VercelAITranslator implements SpanProcessor {
     const config = VERCEL_SPAN_CONFIG[name];
     const parentLogType = VERCEL_PARENT_SPANS[name];
     const logType = resolveLogType(name, attrs);
+
+    // Embedding input/output — extract up front, before any early-return or
+    // metadata move, so BOTH the parent (ai.embed: ai.value/ai.embedding) and
+    // child (ai.embed.doEmbed: ai.values/ai.embeddings) spans carry input/output.
+    if (
+      logType === RespanLogType.EMBEDDING ||
+      config?.logType === RespanLogType.EMBEDDING ||
+      parentLogType === RespanLogType.EMBEDDING
+    ) {
+      const embInput = formatEmbeddingInput(attrs);
+      if (embInput) setDefault(attrs, TL_ENTITY_INPUT, embInput);
+      const embOutput = formatEmbeddingOutput(attrs);
+      if (embOutput) setDefault(attrs, TL_ENTITY_OUTPUT, embOutput);
+    }
 
     enrichMetadata(attrs);
     delete attrs[TL_SPAN_KIND];
@@ -138,6 +154,13 @@ export class VercelAITranslator implements SpanProcessor {
       if (config.logType === RespanLogType.EMBEDDING || logType === RespanLogType.EMBEDDING) {
         setDefault(attrs, LLM_REQUEST_TYPE, RespanLogType.EMBEDDING);
         enrichModel(attrs, attrs[AI_MODEL_ID]);
+
+        const embInput = formatEmbeddingInput(attrs);
+        if (embInput) setDefault(attrs, TL_ENTITY_INPUT, embInput);
+        const embOutput = formatEmbeddingOutput(attrs);
+        if (embOutput) setDefault(attrs, TL_ENTITY_OUTPUT, embOutput);
+
+        enrichTokens(attrs);
       }
 
       if (config.logType === RespanLogType.TOOL || logType === RespanLogType.TOOL) {
@@ -180,6 +203,13 @@ export class VercelAITranslator implements SpanProcessor {
       if (logType === RespanLogType.EMBEDDING) {
         setDefault(attrs, LLM_REQUEST_TYPE, RespanLogType.EMBEDDING);
         enrichModel(attrs, attrs[AI_MODEL_ID]);
+
+        const embInput = formatEmbeddingInput(attrs);
+        if (embInput) setDefault(attrs, TL_ENTITY_INPUT, embInput);
+        const embOutput = formatEmbeddingOutput(attrs);
+        if (embOutput) setDefault(attrs, TL_ENTITY_OUTPUT, embOutput);
+
+        enrichTokens(attrs);
       }
 
       if (logType === RespanLogType.TOOL) {

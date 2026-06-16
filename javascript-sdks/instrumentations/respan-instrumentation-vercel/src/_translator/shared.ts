@@ -31,6 +31,8 @@ export const AI_OPERATION_ID = "ai.operationId";
 export const AI_MODEL_ID = "ai.model.id";
 export const AI_EMBEDDING = "ai.embedding";
 export const AI_EMBEDDINGS = "ai.embeddings";
+export const AI_VALUE = "ai.value";
+export const AI_VALUES = "ai.values";
 export const AI_AGENT_ID = "ai.agent.id";
 export const AI_WORKFLOW_ID = "ai.workflow.id";
 export const AI_TRANSCRIPT = "ai.transcript";
@@ -77,6 +79,30 @@ export function safeJsonStr(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/**
+ * Map a Vercel embedding span's value(s) + vector(s) onto the universal
+ * input/output. Input = the embedded text; output = a compact summary of the
+ * vector(s) (dimensions + count) so we don't bloat storage with raw floats.
+ */
+export function formatEmbeddingInput(attrs: SpanAttributes): string | undefined {
+  const value = attrs[AI_VALUE] ?? attrs[AI_VALUES];
+  if (value === undefined || value === null) return undefined;
+  return safeJsonStr(value);
+}
+
+export function formatEmbeddingOutput(attrs: SpanAttributes): string | undefined {
+  const raw = attrs[AI_EMBEDDING] ?? attrs[AI_EMBEDDINGS];
+  if (raw === undefined || raw === null) return undefined;
+  const parsed = typeof raw === "string" ? safeJsonParse(raw) : raw;
+  if (Array.isArray(parsed) && Array.isArray(parsed[0])) {
+    return safeJsonStr({ embedding_count: parsed.length, dimensions: parsed[0]?.length ?? 0 });
+  }
+  if (Array.isArray(parsed)) {
+    return safeJsonStr({ embedding_count: 1, dimensions: parsed.length });
+  }
+  return safeJsonStr(raw);
 }
 
 export function safeJsonParse(value: unknown): unknown {
