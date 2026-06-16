@@ -33,8 +33,6 @@ import {
   TL_ENTITY_INPUT,
   TL_ENTITY_OUTPUT,
   TL_REQUEST_FUNCTIONS,
-  AI_USAGE_TOKENS,
-  GEN_AI_USAGE_INPUT_TOKENS,
   formatEmbeddingInput,
   formatEmbeddingOutput,
   isVercelAISpan,
@@ -87,10 +85,11 @@ export class VercelAITranslator implements SpanProcessor {
     const logType = resolveLogType(name, attrs);
 
     // Embedding spans (span-contract.md): input = embedded text, output = the
-    // embedding vector(s) (captured — debuggable RAG data; size handled by
-    // storage tiering, not by dropping it), plus canonical input_tokens.
-    // Extract up front, before any early-return or metadata move, so both the
-    // parent (ai.embed) and child (ai.embed.doEmbed) spans are covered.
+    // embedding vector(s) — captured, not dropped (debuggable RAG data; size is
+    // handled by storage tiering, not by deleting it here). Vercel's synthetic
+    // ai.usage.tokens is intentionally NOT surfaced as a token count; it's
+    // stripped. Extract up front, before any early-return or metadata move, so
+    // both the parent (ai.embed) and child (ai.embed.doEmbed) spans are covered.
     if (
       logType === RespanLogType.EMBEDDING ||
       config?.logType === RespanLogType.EMBEDDING ||
@@ -100,8 +99,6 @@ export class VercelAITranslator implements SpanProcessor {
       if (embInput) setDefault(attrs, TL_ENTITY_INPUT, embInput);
       const embOutput = formatEmbeddingOutput(attrs);
       if (embOutput) setDefault(attrs, TL_ENTITY_OUTPUT, embOutput);
-      const embTokens = attrs[AI_USAGE_TOKENS];
-      if (embTokens !== undefined) setDefault(attrs, GEN_AI_USAGE_INPUT_TOKENS, Number(embTokens));
     }
 
     enrichMetadata(attrs);

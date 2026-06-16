@@ -112,7 +112,7 @@ across spans.
 |---|---|---|
 | `gen_ai.request.model` | string | embedding model |
 | `llm.request.type` | string | `embedding` |
-| `gen_ai.usage.input_tokens` | int | input token count |
+| `gen_ai.usage.input_tokens` | int | input token count, **only from a real provider usage field** |
 | `traceloop.entity.input` | string (JSON) | the embedded text/value(s) |
 | `traceloop.entity.output` | string (JSON) | the embedding vector(s) |
 
@@ -128,7 +128,12 @@ solved by deleting the data in the translator.
 **Remap, then strip** the vendor-specific keys once the canonical fields are
 populated (so they don't also linger in passthrough metadata): `ai.value` /
 `ai.values` → `traceloop.entity.input`, `ai.embedding` / `ai.embeddings` →
-`traceloop.entity.output`, `ai.usage.tokens` → `gen_ai.usage.input_tokens`.
+`traceloop.entity.output`.
+
+**Do not** surface vendor *synthetic* token fields as a usage count (e.g.,
+Vercel's `ai.usage.tokens` is not a trustworthy provider token count) — strip
+them. `gen_ai.usage.input_tokens` is populated only when the provider returns a
+real usage field.
 
 ## Workflow / Agent / Task spans
 

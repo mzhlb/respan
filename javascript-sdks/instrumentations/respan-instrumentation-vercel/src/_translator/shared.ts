@@ -33,7 +33,6 @@ export const AI_EMBEDDING = "ai.embedding";
 export const AI_EMBEDDINGS = "ai.embeddings";
 export const AI_VALUE = "ai.value";
 export const AI_VALUES = "ai.values";
-export const AI_USAGE_TOKENS = "ai.usage.tokens";
 export const AI_AGENT_ID = "ai.agent.id";
 export const AI_WORKFLOW_ID = "ai.workflow.id";
 export const AI_TRANSCRIPT = "ai.transcript";
