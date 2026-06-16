@@ -33,6 +33,7 @@ export const AI_EMBEDDING = "ai.embedding";
 export const AI_EMBEDDINGS = "ai.embeddings";
 export const AI_VALUE = "ai.value";
 export const AI_VALUES = "ai.values";
+export const AI_USAGE_TOKENS = "ai.usage.tokens";
 export const AI_AGENT_ID = "ai.agent.id";
 export const AI_WORKFLOW_ID = "ai.workflow.id";
 export const AI_TRANSCRIPT = "ai.transcript";
@@ -83,8 +84,10 @@ export function safeJsonStr(value: unknown): string {
 
 /**
  * Map a Vercel embedding span's value(s) + vector(s) onto the universal
- * input/output. Input = the embedded text; output = a compact summary of the
- * vector(s) (dimensions + count) so we don't bloat storage with raw floats.
+ * input/output. Input = the embedded text; output = the embedding vector(s).
+ * We capture the full vector (it's debuggable data for RAG — similarity,
+ * drift, degenerate-vector detection); size is handled by storage tiering at
+ * ingest, not by dropping data here.
  */
 export function formatEmbeddingInput(attrs: SpanAttributes): string | undefined {
   const value = attrs[AI_VALUE] ?? attrs[AI_VALUES];
@@ -95,13 +98,6 @@ export function formatEmbeddingInput(attrs: SpanAttributes): string | undefined 
 export function formatEmbeddingOutput(attrs: SpanAttributes): string | undefined {
   const raw = attrs[AI_EMBEDDING] ?? attrs[AI_EMBEDDINGS];
   if (raw === undefined || raw === null) return undefined;
-  const parsed = typeof raw === "string" ? safeJsonParse(raw) : raw;
-  if (Array.isArray(parsed) && Array.isArray(parsed[0])) {
-    return safeJsonStr({ embedding_count: parsed.length, dimensions: parsed[0]?.length ?? 0 });
-  }
-  if (Array.isArray(parsed)) {
-    return safeJsonStr({ embedding_count: 1, dimensions: parsed.length });
-  }
   return safeJsonStr(raw);
 }
 
