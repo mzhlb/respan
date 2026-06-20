@@ -13,6 +13,10 @@ function viewLink(service: string): string | undefined {
   switch (service) {
     case 'prompts':
       return `${PLATFORM_BASE}/prompts`;
+    case 'datasets':
+      return `${PLATFORM_BASE}/datasets`;
+    case 'evaluators':
+      return `${PLATFORM_BASE}/evaluators`;
     case 'traces':
       return `${PLATFORM_BASE}/traces?span_workflow_name=demo`;
     default:

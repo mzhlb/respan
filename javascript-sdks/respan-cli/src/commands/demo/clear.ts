@@ -14,7 +14,7 @@ import { SeederContext, SeederResult, ExistingResource } from '../../lib/demo/ty
  */
 export default class DemoClear extends BaseCommand {
   static description =
-    'Delete the sample prompts created by `respan demo`. Demo traces are left in place (each run is timestamped history). Idempotent — safe to re-run.';
+    'Delete the sample prompts, datasets, and evaluators created by `respan demo`. Demo traces are left in place (each run is timestamped history). Idempotent — safe to re-run.';
 
   static examples = ['<%= config.bin %> demo clear', '<%= config.bin %> demo clear --yes'];
 

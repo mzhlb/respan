@@ -7,6 +7,8 @@
 
 import { Seeder } from './types.js';
 import { promptsSeeder } from './seed-prompts.js';
+import { datasetsSeeder } from './seed-datasets.js';
+import { evaluatorsSeeder } from './seed-evaluators.js';
 import { tracesSeeder } from './seed-traces.js';
 
-export const SEEDERS: Seeder[] = [promptsSeeder, tracesSeeder];
+export const SEEDERS: Seeder[] = [promptsSeeder, datasetsSeeder, evaluatorsSeeder, tracesSeeder];
