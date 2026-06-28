@@ -12,7 +12,7 @@ boolean, plan §3-item-6).
   escalate_to_human -> terminal: resolution = escalated
 """
 
-from agents import RunContextWrapper, function_tool
+from agents import RunContextWrapper, custom_span, function_tool
 
 from .config import KB, MOCK_ACCOUNTS, MOCK_ORDERS
 from .context import TicketContext
@@ -37,9 +37,12 @@ def _retrieve(tenant_id: str, query: str, k: int = 2) -> list[dict]:
 @function_tool
 async def search_kb(ctx: RunContextWrapper[TicketContext], query: str) -> dict:
     """Search the knowledge base for an answer to the customer's question."""
-    # Real embedding call through the gateway -> openai.embeddings span (log_type=embedding).
+    # Real embedding call through the gateway. Wrap it in an Agents-SDK span so it
+    # nests under the ticket's trace (the live Agents SDK trace context) instead of
+    # orphaning into its own single-span trace.
     client = get_gateway_client()
-    await client.embeddings.create(model=EMBED_MODEL, input=query)
+    with custom_span("openai.embeddings", data={"model": EMBED_MODEL}):
+        await client.embeddings.create(model=EMBED_MODEL, input=query)
     chunks = _retrieve(ctx.context.tenant_id, query)
     ctx.context.record("search_kb", query=query, hits=len(chunks))
     return {"query": query, "results": [{"title": c["title"], "body": c["body"]} for c in chunks]}

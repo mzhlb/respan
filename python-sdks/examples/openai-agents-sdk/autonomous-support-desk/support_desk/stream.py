@@ -5,10 +5,6 @@ dicts as a ticket is processed - the seam a UI (or the terminal animator in
 run_stream.py) attaches to. It mirrors runner.run_ticket exactly (same upfront
 propagation, one trace() per ticket, resolution stamp at finish) but uses
 Runner.run_streamed so per-step events surface live.
-
-This relies on telemetry._unpatch_openai_responses() having removed the upstream
-OpenAIInstrumentor Responses wrappers - otherwise Responses-API streaming crashes
-with "'AsyncStream' object has no attribute 'id'". init_telemetry() does that.
 """
 
 import uuid
