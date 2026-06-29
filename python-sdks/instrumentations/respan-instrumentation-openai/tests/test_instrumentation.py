@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from respan_instrumentation_openai import _otel_emitter as emitter
+from respan_instrumentation_openai import _instrumentation as instr
 from respan_instrumentation_openai._instrumentation import OpenAIInstrumentor
 
 
@@ -100,6 +101,43 @@ def test_emit_chat_injects_one_span(monkeypatch):
     assert span.name == "openai.chat"
     assert span.attributes["llm.request.type"] == "chat"
     assert span.attributes["gen_ai.usage.total_tokens"] == 11
+
+
+# --- streaming aggregation --------------------------------------------------
+
+
+def _chunk(content=None, tool_deltas=None, usage=None, model="gpt-4.1-nano", cid="c1"):
+    delta = SimpleNamespace(content=content, tool_calls=tool_deltas)
+    return SimpleNamespace(id=cid, model=model, usage=usage, choices=[SimpleNamespace(delta=delta)])
+
+
+def test_aggregate_chat_joins_text_and_usage():
+    chunks = [
+        _chunk(content="Hel"),
+        _chunk(content="lo"),
+        _chunk(usage=SimpleNamespace(prompt_tokens=4, completion_tokens=2, total_tokens=6)),
+    ]
+    agg = instr._aggregate_chat(chunks)
+    assert agg["choices"][0]["message"]["content"] == "Hello"
+    assert emitter.tr.extract_usage(agg) == {"prompt": 4, "completion": 2, "total": 6}
+
+
+def test_aggregate_chat_reassembles_streamed_tool_calls():
+    def td(index, *, tid=None, name=None, args=None):
+        fn = SimpleNamespace(name=name, arguments=args)
+        return SimpleNamespace(index=index, id=tid, function=fn)
+
+    chunks = [
+        _chunk(tool_deltas=[td(0, tid="call_1", name="get_weather", args='{"ci')]),
+        _chunk(tool_deltas=[td(0, args='ty": "Tokyo"}')]),
+        _chunk(usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15)),
+    ]
+    agg = instr._aggregate_chat(chunks)
+    calls = agg["choices"][0]["message"]["tool_calls"]
+    assert len(calls) == 1
+    assert calls[0]["id"] == "call_1"
+    assert calls[0]["function"]["name"] == "get_weather"
+    assert calls[0]["function"]["arguments"] == '{"city": "Tokyo"}'
 
 
 # --- instrumentor lifecycle -------------------------------------------------

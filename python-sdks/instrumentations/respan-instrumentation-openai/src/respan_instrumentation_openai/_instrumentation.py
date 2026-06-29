@@ -44,6 +44,7 @@ _original_methods: dict[tuple[type[Any], str], Any] = {}
 
 def _aggregate_chat(chunks: list[Any]) -> dict[str, Any]:
     parts: list[str] = []
+    tool_calls: dict[int, dict[str, Any]] = {}
     usage = model = rid = None
     for ch in chunks:
         model = getattr(ch, "model", None) or model
@@ -52,17 +53,32 @@ def _aggregate_chat(chunks: list[Any]) -> dict[str, Any]:
         if u is not None:
             usage = u
         choices = getattr(ch, "choices", None) or []
-        if choices:
-            delta = getattr(choices[0], "delta", None)
-            content = getattr(delta, "content", None) if delta is not None else None
-            if content:
-                parts.append(content)
-    return {
-        "model": model,
-        "id": rid,
-        "usage": usage,
-        "choices": [{"message": {"role": "assistant", "content": "".join(parts)}}],
-    }
+        if not choices:
+            continue
+        delta = getattr(choices[0], "delta", None)
+        if delta is None:
+            continue
+        content = getattr(delta, "content", None)
+        if content:
+            parts.append(content)
+        # Accumulate streamed tool-call deltas by index (name once, args in fragments).
+        for tcd in getattr(delta, "tool_calls", None) or []:
+            idx = getattr(tcd, "index", 0) or 0
+            slot = tool_calls.setdefault(
+                idx, {"id": None, "type": "function", "function": {"name": "", "arguments": ""}}
+            )
+            if getattr(tcd, "id", None):
+                slot["id"] = tcd.id
+            fn = getattr(tcd, "function", None)
+            if fn is not None:
+                if getattr(fn, "name", None):
+                    slot["function"]["name"] = fn.name
+                if getattr(fn, "arguments", None):
+                    slot["function"]["arguments"] += fn.arguments
+    message: dict[str, Any] = {"role": "assistant", "content": "".join(parts) or None}
+    if tool_calls:
+        message["tool_calls"] = [tool_calls[i] for i in sorted(tool_calls)]
+    return {"model": model, "id": rid, "usage": usage, "choices": [{"message": message}]}
 
 
 def _aggregate_completion(chunks: list[Any]) -> dict[str, Any]:
