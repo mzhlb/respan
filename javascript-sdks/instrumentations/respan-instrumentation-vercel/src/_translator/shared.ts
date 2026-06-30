@@ -117,6 +117,16 @@ export function isVercelAISpan(span: ReadableSpan): boolean {
   if (span.instrumentationLibrary?.name === "ai") {
     return true;
   }
+  // Vercel AI SDK v7 (@ai-sdk/otel) emits OTEL GenAI-convention spans under the
+  // "gen_ai" scope instead of the v5/v6 "ai" scope / `ai.*` spans (A12).
+  if (
+    (span as any).instrumentationScope?.name === "gen_ai" ||
+    span.instrumentationLibrary?.name === "gen_ai"
+  ) {
+    if (span.attributes["gen_ai.operation.name"] !== undefined) {
+      return true;
+    }
+  }
   if (span.attributes[AI_SDK] !== undefined) {
     return true;
   }

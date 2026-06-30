@@ -1,0 +1,6 @@
+{
+  "summary": "@respan/instrumentation-vercel: support Vercel AI SDK v7 telemetry (A12). v7 removed built-in OpenTelemetry from the ai package (moved to @ai-sdk/otel) and emits OTEL GenAI-convention spans (scope gen_ai, names chat/invoke_agent/step, gen_ai.* attributes) instead of the v5/v6 ai.* spans. The VercelAITranslator now recognizes gen_ai-scope spans and maps them to the Respan format (log_type, input/output messages, tokens) so v7 calls are traced as LLM calls. v5/v6 path unchanged.",
+  "packages": {
+    "@respan/instrumentation-vercel": "minor"
+  }
+}

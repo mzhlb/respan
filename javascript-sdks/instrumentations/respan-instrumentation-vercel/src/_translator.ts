@@ -42,6 +42,7 @@ import {
   setDefault,
 } from "./_translator/shared.js";
 import { enrichMetadata, enrichModel, enrichPerformanceMetrics, enrichTokens, stripRedundantAttrs } from "./_translator/span-enrichment.js";
+import { GENAI_SCOPE, enrichGenAIConventionSpan, genAILogTypeForName, isGenAIConventionSpan } from "./_translator/genai.js";
 
 /**
  * SpanProcessor that translates Vercel AI SDK attributes to Traceloop/OpenLLMetry.
@@ -54,6 +55,18 @@ export class VercelAITranslator implements SpanProcessor {
   onStart(span: Span, _parentContext: Context): void {
     const writableSpan = span as any;
     const name: string = writableSpan.name ?? "";
+
+    // Vercel AI SDK v7 (@ai-sdk/otel): GenAI-convention spans use scope "gen_ai"
+    // and names like "chat"/"invoke_agent"/"step N" (not the "ai." prefix). Set a
+    // log type now so the composite processor doesn't filter the span out before
+    // onEnd enriches it (A12).
+    const scope: string | undefined =
+      writableSpan.instrumentationScope?.name ?? writableSpan.instrumentationLibrary?.name;
+    if (scope === GENAI_SCOPE) {
+      writableSpan.setAttribute(RESPAN_LOG_TYPE, genAILogTypeForName(name));
+      return;
+    }
+
     if (!name.startsWith(AI_PREFIX)) {
       return;
     }
@@ -76,6 +89,14 @@ export class VercelAITranslator implements SpanProcessor {
   onEnd(span: ReadableSpan): void {
     const attrs = (span as any).attributes as Record<string, any> | undefined;
     if (!attrs || !isVercelAISpan(span)) {
+      return;
+    }
+
+    // Vercel AI SDK v7 (@ai-sdk/otel) GenAI-convention spans take a dedicated path
+    // (different scope, names, and attributes than the v5/v6 `ai.*` spans). A12.
+    if (isGenAIConventionSpan(span)) {
+      enrichGenAIConventionSpan(attrs);
+      stripRedundantAttrs(attrs);
       return;
     }
 
