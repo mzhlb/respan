@@ -10,7 +10,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<4.0"
+python = ">=3.11,<3.14"
 respan-tracing = ">=2.3.0"
 
 # Native (Traceloop-free) instrumentors for the direct LLM SDKs, bundled so a
