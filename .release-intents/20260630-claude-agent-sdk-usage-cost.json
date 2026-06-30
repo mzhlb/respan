@@ -1,0 +1,6 @@
+{
+  "summary": "respan-instrumentation-claude-agent-sdk: wire ResultMessage usage/cost into the canonical span attributes the Respan backend rolls up (A7). The invoke_agent span recorded the model but total_request_tokens/total_cost were 0 because tokens were only set as gen_ai.usage.input_tokens and cost as a bare 'cost' attribute. Now also set gen_ai.usage.prompt_tokens/completion_tokens/total_tokens and respan.metadata.response_cost (from total_cost_usd), matching the LiteLLM/OpenAI instrumentors.",
+  "packages": {
+    "respan-instrumentation-claude-agent-sdk": "patch"
+  }
+}
