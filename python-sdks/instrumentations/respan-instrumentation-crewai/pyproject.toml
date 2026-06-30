@@ -16,6 +16,9 @@ respan-sdk = ">=2.5.0"
 respan-instrumentation-openinference = ">=1.2.2"
 crewai = ">=0.80.0"
 openinference-instrumentation-crewai = ">=0.1.0"
+# CrewAI runs model calls through LiteLLM; this captures that layer's
+# model/tokens/cost (which the OpenInference CrewAI spans do not). See A11.
+respan-instrumentation-litellm = ">=0.1.0"
 
 [tool.poetry.plugins."respan.instrumentations"]
 crewai = "respan_instrumentation_crewai:CrewAIInstrumentor"

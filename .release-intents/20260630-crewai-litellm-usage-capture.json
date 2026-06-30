@@ -1,0 +1,6 @@
+{
+  "summary": "respan-instrumentation-crewai now captures CrewAI's LiteLLM layer so LLM spans carry model/tokens/cost (A11). CrewAI runs model calls through LiteLLM; the OpenInference CrewAI LLM spans don't expose that usage. The instrumentor now turns OpenInference's LLM spans off by default (create_llm_spans=False) and registers the native LiteLLM callback (respan-instrumentation-litellm), which emits LLM spans with usage/cost nested under the active CrewAI agent span. Double-registration guarded; revert with create_llm_spans=True / capture_litellm=False.",
+  "packages": {
+    "respan-instrumentation-crewai": "minor"
+  }
+}
