@@ -192,3 +192,35 @@ jobs:
               raise ModuleNotFoundError(os.environ["IMPORT_NAME"])
           importlib.metadata.version(os.environ["DIST_NAME"])
           PY
+
+      # A1: respan-ai bundles the native respan-instrumentation-* plugins so a
+      # bare Respan() auto-traces the direct LLM SDKs. Unlike the --no-deps smoke
+      # check above, this installs WITH dependencies (also guarding against an
+      # A9-style resolution blow-up) and asserts the plugins are discovered and
+      # auto-activated.
+      - name: respan-ai auto-instrument smoke check
+        if: ${{ matrix.name == 'respan-ai' }}
+        working-directory: ${{ matrix.path }}
+        env:
+          RESPAN_API_KEY: ci-test-key
+        run: |
+          python3 -m venv .ci-autoinstrument-venv
+          . .ci-autoinstrument-venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+          python - <<'PY'
+          import importlib.metadata as md
+
+          expected = {"openai", "anthropic", "aws-bedrock", "vertexai", "together", "ollama"}
+
+          discovered = {ep.name for ep in md.entry_points(group="respan.instrumentations")}
+          missing = expected - discovered
+          assert not missing, f"native instrumentors not bundled: {sorted(missing)}"
+
+          from respan import Respan
+          respan = Respan()
+          activated = set(getattr(respan, "_instrumentations", {}))
+          not_active = expected - activated
+          assert not not_active, f"bare Respan() did not auto-activate: {sorted(not_active)}"
+          print("OK: all 6 native instrumentors bundled and auto-activated")
+          PY

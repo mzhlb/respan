@@ -1,0 +1,6 @@
+{
+  "summary": "respan-ai bundles the native (Traceloop-free) respan-instrumentation-* plugins for OpenAI/Anthropic/Bedrock/VertexAI/Together/Ollama and auto-activates them on a bare Respan(), so direct LLM SDKs are traced with correct llm.request.type/tokens/cost out of the box (A1). cohere/mistral/groq are excluded until they are rewritten native (mistral/groq's openinference deps cap at Python <3.13).",
+  "packages": {
+    "respan-ai": "minor"
+  }
+}

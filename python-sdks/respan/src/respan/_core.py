@@ -1,5 +1,6 @@
 """Respan — unified entry point for tracing and instrumentation plugins."""
 
+import importlib.metadata
 import json
 import logging
 import os
@@ -19,6 +20,39 @@ from respan_tracing.utils.span_factory import (
 from ._types import Instrumentation
 
 logger = logging.getLogger(__name__)
+
+# Entry-point group that native Respan instrumentation plugins register under.
+_NATIVE_INSTRUMENTATION_GROUP = "respan.instrumentations"
+
+
+def _discover_native_instrumentations() -> list:
+    """Instantiate all installed native ``respan.instrumentations`` plugins.
+
+    These ship as ``respan-instrumentation-*`` dependencies of ``respan-ai`` and
+    each hard-requires its provider SDK, so the SDK is normally present. A plugin
+    whose SDK can't be imported is skipped quietly (DEBUG) rather than erroring,
+    so a bare ``Respan()`` never spams about providers the app doesn't use.
+    """
+    plugins: list = []
+    try:
+        entry_points = importlib.metadata.entry_points(
+            group=_NATIVE_INSTRUMENTATION_GROUP
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("Failed to discover native instrumentations: %s", exc)
+        return plugins
+
+    for ep in entry_points:
+        try:
+            plugins.append(ep.load()())
+        except (ImportError, ModuleNotFoundError) as exc:
+            # Target SDK not importable — expected when that SDK isn't installed.
+            logger.debug(
+                "Skipping %s instrumentation (SDK not available): %s", ep.name, exc
+            )
+        except Exception as exc:
+            logger.warning("Failed to load %s instrumentation: %s", ep.name, exc)
+    return plugins
 
 
 class Respan:
@@ -114,6 +148,16 @@ class Respan:
 
         # 3. Activate instrumentations
         self._instrumentations: Dict[str, object] = {}
+
+        # 3a. Auto mode (no explicit plugins): activate the native
+        #     respan-instrumentation-* plugins bundled with respan-ai so a bare
+        #     Respan() traces the direct LLM SDKs out of the box.
+        if instrumentations is None:
+            for inst in _discover_native_instrumentations():
+                name = getattr(inst, "name", type(inst).__name__)
+                self._activate(name, inst)
+
+        # 3b. Explicitly-passed instrumentations.
         for inst in instrumentations or []:
             name = getattr(inst, "name", type(inst).__name__)
             self._activate(name, inst)
