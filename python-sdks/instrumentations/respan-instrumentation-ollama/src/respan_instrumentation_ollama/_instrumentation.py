@@ -300,8 +300,9 @@ class OllamaInstrumentor:
         try:
             Client, AsyncClient = _load_client_classes()
         except (AttributeError, ImportError) as exc:
-            logger.warning(
-                "Failed to activate Ollama instrumentation - missing dependency: %s",
+            # Expected when the app doesn't use Ollama (the SDK is an optional dep).
+            logger.debug(
+                "Ollama instrumentation inactive - missing dependency: %s",
                 exc,
             )
             return

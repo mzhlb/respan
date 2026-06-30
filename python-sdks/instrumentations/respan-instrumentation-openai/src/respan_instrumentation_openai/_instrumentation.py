@@ -279,7 +279,8 @@ class OpenAIInstrumentor:
         try:
             import openai  # noqa: F401
         except ImportError as exc:
-            logger.warning("Failed to activate OpenAI instrumentation — openai not installed: %s", exc)
+            # Expected when the app doesn't use OpenAI (the SDK is an optional dep).
+            logger.debug("OpenAI instrumentation inactive — openai not installed: %s", exc)
             return
         try:
             for module_path, class_name, kind, is_async in _TARGETS:

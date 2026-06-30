@@ -272,8 +272,9 @@ class VertexAIInstrumentor:
         try:
             GenerativeModel, ChatSession = _load_vertexai_classes()
         except (AttributeError, ImportError) as exc:
-            logger.warning(
-                "Failed to activate Vertex AI instrumentation - missing dependency: %s",
+            # Expected when the app doesn't use Vertex AI (the SDK is an optional dep).
+            logger.debug(
+                "Vertex AI instrumentation inactive - missing dependency: %s",
                 exc,
             )
             return

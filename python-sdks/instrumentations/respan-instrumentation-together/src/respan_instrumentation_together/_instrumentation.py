@@ -356,8 +356,9 @@ class TogetherInstrumentor:
                 ASYNC_RERANK_RESOURCE_CLASS_NAME,
             )
         except (AttributeError, ImportError) as exc:
-            logger.warning(
-                "Failed to activate Together instrumentation - missing dependency: %s",
+            # Expected when the app doesn't use Together (the SDK is an optional dep).
+            logger.debug(
+                "Together instrumentation inactive - missing dependency: %s",
                 exc,
             )
             return

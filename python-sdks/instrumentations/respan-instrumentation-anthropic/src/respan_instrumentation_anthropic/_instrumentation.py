@@ -239,8 +239,9 @@ class AnthropicInstrumentor:
         try:
             Messages, AsyncMessages = _load_messages_classes()
         except (AttributeError, ImportError) as exc:
-            logger.warning(
-                "Failed to activate Anthropic instrumentation — missing dependency: %s",
+            # Expected when the app doesn't use Anthropic (the SDK is an optional dep).
+            logger.debug(
+                "Anthropic instrumentation inactive — missing dependency: %s",
                 exc,
             )
             return
