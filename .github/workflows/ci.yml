@@ -221,19 +221,24 @@ jobs:
           import importlib.metadata as md
           import importlib.util
 
-          # 1. All 6 native instrumentors are bundled / discoverable.
-          expected = {"openai", "anthropic", "aws-bedrock", "vertexai", "together", "ollama"}
+          # 1. All native instrumentors are bundled / discoverable.
+          expected = {"openai", "anthropic", "aws-bedrock", "vertexai", "google-genai", "together", "ollama"}
           discovered = {ep.name for ep in md.entry_points(group="respan.instrumentations")}
           missing = expected - discovered
           assert not missing, f"native instrumentors not bundled: {sorted(missing)}"
 
           # 2. No provider SDK leaked in (they are optional, brought by the app).
+          def _installed(module):
+              try:
+                  return importlib.util.find_spec(module) is not None
+              except Exception:
+                  return False
           leaked = [
-              m for m in ("openai", "anthropic", "botocore", "vertexai", "together", "ollama")
-              if importlib.util.find_spec(m) is not None
+              m for m in ("openai", "anthropic", "botocore", "vertexai", "google.genai", "together", "ollama")
+              if _installed(m)
           ]
           assert not leaked, f"provider SDKs must not be installed by respan-ai: {leaked}"
-          print("OK: 6 instrumentors bundled, no provider SDK leaked")
+          print("OK: instrumentors bundled, no provider SDK leaked")
           PY
           # 3. Install one provider SDK and assert that instrumentor actually traces.
           python -m pip install openai

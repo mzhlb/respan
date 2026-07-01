@@ -244,8 +244,9 @@ class GoogleGenAIInstrumentor:
         try:
             Models, AsyncModels = _load_models_classes()
         except (AttributeError, ImportError) as exc:
-            logger.warning(
-                "Failed to activate Google Gen AI instrumentation - missing dependency: %s",
+            # Expected when the app doesn't use Google Gen AI (the SDK is an optional dep).
+            logger.debug(
+                "Google Gen AI instrumentation inactive - missing dependency: %s",
                 exc,
             )
             return

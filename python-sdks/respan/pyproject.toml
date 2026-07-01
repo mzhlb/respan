@@ -27,7 +27,8 @@ respan-tracing = ">=2.3.0"
 respan-instrumentation-openai = ">=1.2.0,<2.0.0"       # OpenAI + Azure OpenAI
 respan-instrumentation-anthropic = ">=1.0.1,<2.0.0"
 respan-instrumentation-aws-bedrock = ">=0.1.0,<1.0.0"
-respan-instrumentation-vertexai = ">=0.1.0,<1.0.0"
+respan-instrumentation-vertexai = ">=0.1.0,<1.0.0"     # Gemini via Vertex AI
+respan-instrumentation-google-genai = ">=0.1.0,<1.0.0" # Gemini via the Google GenAI SDK
 respan-instrumentation-together = ">=0.1.0,<1.0.0"
 respan-instrumentation-ollama = ">=0.1.0,<1.0.0"
 
