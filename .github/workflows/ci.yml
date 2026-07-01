@@ -214,6 +214,7 @@ jobs:
             ../instrumentations/respan-instrumentation-anthropic \
             ../instrumentations/respan-instrumentation-aws-bedrock \
             ../instrumentations/respan-instrumentation-vertexai \
+            ../instrumentations/respan-instrumentation-google-genai \
             ../instrumentations/respan-instrumentation-together \
             ../instrumentations/respan-instrumentation-ollama \
             dist/*.whl
