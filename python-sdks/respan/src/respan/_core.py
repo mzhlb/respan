@@ -1,6 +1,7 @@
 """Respan — unified entry point for tracing and instrumentation plugins."""
 
 import importlib.metadata
+import importlib.util
 import json
 import logging
 import os
@@ -46,6 +47,34 @@ _BUNDLED_NATIVE_INSTRUMENTATIONS: Dict[str, tuple] = {
     "together": (Instruments.TOGETHER,),
     "ollama": (Instruments.OLLAMA,),
 }
+
+# Top-level provider SDK package for each bundled native. Used only to detect the
+# "provider SDK is installed but its native instrumentor never activated" case and
+# warn about it — the safety net for the allowlist/dedup logic above, so a
+# bundling gap or a failed load doesn't leave an installed SDK silently untraced.
+# Probed with find_spec (not import), so checking a provider the app doesn't use
+# has no side effects.
+_PROVIDER_SDK_MODULES: Dict[str, tuple] = {
+    "openai": ("openai",),
+    "anthropic": ("anthropic",),
+    "aws-bedrock": ("botocore",),  # boto3's client layer
+    "vertexai": ("vertexai",),
+    "google-genai": ("google.genai",),
+    "together": ("together",),
+    "ollama": ("ollama",),
+}
+
+
+def _provider_sdk_installed(modules: tuple) -> bool:
+    """True if any of ``modules`` is importable (installed), without importing it."""
+    for name in modules:
+        try:
+            if importlib.util.find_spec(name) is not None:
+                return True
+        except (ImportError, ModuleNotFoundError, ValueError):
+            # Parent package absent, name isn't a package, etc. — treat as absent.
+            continue
+    return False
 
 
 def _discover_native_instrumentations() -> List[tuple]:
@@ -198,23 +227,48 @@ class Respan:
         #     respan-instrumentation-* plugins discovered above so a bare
         #     Respan() traces the direct LLM SDKs out of the box.  Their OTEL
         #     counterparts were blocked above, so each provider is traced once.
-        for _ep_name, inst in native_instrumentations:
+        activated_native_names = set()
+        for ep_name, inst in native_instrumentations:
             name = getattr(inst, "name", type(inst).__name__)
-            self._activate(name, inst)
+            if self._activate(name, inst):
+                activated_native_names.add(ep_name)
+
+        # 3a-safety. Warn when a bundled provider's SDK is installed but its native
+        #     instrumentor never activated (bundling gap, missing entry point, or a
+        #     load failure).  Without this, an installed SDK that isn't covered by a
+        #     native plugin — and whose OTEL twin may have been blocked above — would
+        #     produce no LLM spans with no signal.  (A plugin that ran but found its
+        #     SDK absent or incompatible already logs for itself, so it is not
+        #     re-flagged here.)
+        if instrumentations is None:
+            for ep_name, sdk_modules in _PROVIDER_SDK_MODULES.items():
+                if ep_name in activated_native_names:
+                    continue
+                if _provider_sdk_installed(sdk_modules):
+                    logger.warning(
+                        "%s SDK is installed but its Respan instrumentation did not "
+                        "activate; its LLM calls will not be traced. Reinstall "
+                        "respan-instrumentation-%s, or pass the instrumentor via "
+                        "Respan(instrumentations=[...]).",
+                        ep_name,
+                        ep_name,
+                    )
 
         # 3b. Explicitly-passed instrumentations.
         for inst in instrumentations or []:
             name = getattr(inst, "name", type(inst).__name__)
             self._activate(name, inst)
 
-    def _activate(self, name: str, inst: object) -> None:
-        """Activate a single instrumentor."""
+    def _activate(self, name: str, inst: object) -> bool:
+        """Activate a single instrumentor. Returns False if activation raised."""
         try:
             inst.activate()  # type: ignore[union-attr]
             self._instrumentations[name] = inst
             logger.info("Activated instrumentation: %s", name)
+            return True
         except Exception as exc:
             logger.warning("Failed to activate instrumentation %s: %s", name, exc)
+            return False
 
     @staticmethod
     @contextmanager
