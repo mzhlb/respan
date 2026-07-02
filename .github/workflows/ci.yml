@@ -207,8 +207,9 @@ jobs:
           . .ci-autoinstrument-venv/bin/activate
           python -m pip install --upgrade pip
           # Install the bundled native instrumentors from local source (this PR makes
-          # their provider SDKs optional; the published versions don't yet), plus
-          # respan-ai. The provider SDKs (openai, boto3, ...) must NOT come along.
+          # their provider SDKs optional; the published versions don't yet). Installed
+          # with deps, so respan-tracing + OTEL come along but the provider SDKs
+          # (openai, boto3, ...) must NOT.
           python -m pip install \
             ../instrumentations/respan-instrumentation-openai \
             ../instrumentations/respan-instrumentation-anthropic \
@@ -216,8 +217,14 @@ jobs:
             ../instrumentations/respan-instrumentation-vertexai \
             ../instrumentations/respan-instrumentation-google-genai \
             ../instrumentations/respan-instrumentation-together \
-            ../instrumentations/respan-instrumentation-ollama \
-            dist/*.whl
+            ../instrumentations/respan-instrumentation-ollama
+          # respan-ai's floors point at the first optional-SDK releases (e.g.
+          # anthropic >=1.0.2), which aren't published yet and are newer than the
+          # local source installed above, so a normal resolve of respan-ai's deps
+          # would fail (ResolutionImpossible). Install it --no-deps: the instrumentors
+          # it bundles are already present from source, and the floors are validated
+          # against real releases post-publish, not against local working copies.
+          python -m pip install --no-deps dist/*.whl
           python - <<'PY'
           import importlib.metadata as md
           import importlib.util
