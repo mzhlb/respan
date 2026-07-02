@@ -11,7 +11,11 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
-respan-tracing = ">=2.3.0"
+# Floor is the release that resolves BEDROCK/VERTEXAI block_instruments to
+# Traceloop's real entry-point names (boto3 / google_cloud_aiplatform). Below
+# it, auto mode can't dedup those two providers' OTEL twins and Bedrock/Vertex
+# calls get traced twice (native plugin + OTEL instrumentor).
+respan-tracing = ">=2.17.1"
 
 # Native (Traceloop-free) instrumentors for the direct LLM SDKs, bundled so a
 # bare `Respan()` auto-traces them with no extra packages. They are discovered
