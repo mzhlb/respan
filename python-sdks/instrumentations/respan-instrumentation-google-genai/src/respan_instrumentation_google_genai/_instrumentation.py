@@ -243,10 +243,19 @@ class GoogleGenAIInstrumentor:
 
         try:
             Models, AsyncModels = _load_models_classes()
-        except (AttributeError, ImportError) as exc:
-            # Expected when the app doesn't use Google Gen AI (the SDK is an optional dep).
+        except ImportError as exc:
+            # SDK genuinely absent - expected when the app doesn't use Google Gen AI
+            # (the google-genai SDK is an optional extra).
             logger.debug(
                 "Google Gen AI instrumentation inactive - missing dependency: %s",
+                exc,
+            )
+            return
+        except AttributeError as exc:
+            # SDK installed but incompatible (a class moved/renamed) - surface it
+            # so a broken install isn't silently left untraced.
+            logger.warning(
+                "google-genai is installed but incompatible - instrumentation inactive: %s",
                 exc,
             )
             return
