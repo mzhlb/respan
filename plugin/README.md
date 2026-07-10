@@ -25,18 +25,23 @@ hosted MCP tools (`mcp__respan__*`) are live in the session.
 
 ## What's inside
 
+The marketplace manifest lives at the **repo root** and points at this plugin
+directory, so `respanai/respan` resolves as a marketplace on its own:
+
 ```
-plugin/
+<repo root>/
 ├── .claude-plugin/
-│   ├── plugin.json         # manifest: name, version, api_key user config
-│   └── marketplace.json    # single-plugin marketplace (source: "./")
-├── .mcp.json               # connects the hosted MCP server at mcp.respan.ai
-├── scripts/
-│   └── build-plugin.mjs    # copies the shared skill into skills/ (see below)
-└── skills/
-    └── respan/             # GENERATED — do not hand-edit
-        ├── SKILL.md
-        └── references/*.md
+│   └── marketplace.json    # marketplace entry → source: "./plugin"
+└── plugin/
+    ├── .claude-plugin/
+    │   └── plugin.json     # plugin manifest: name, version, api_key user config
+    ├── .mcp.json           # connects the hosted MCP server at mcp.respan.ai
+    ├── scripts/
+    │   └── build-plugin.mjs  # copies the shared skill into skills/ (see below)
+    └── skills/
+        └── respan/         # GENERATED — do not hand-edit
+            ├── SKILL.md
+            └── references/*.md
 ```
 
 ## Single source of truth
@@ -58,7 +63,7 @@ CLI's copy.
 
 ## Test locally
 
-From the monorepo root, load the plugin without publishing anything:
+From the monorepo root, load the plugin directly without a marketplace:
 
 ```bash
 claude --plugin-dir ./plugin
@@ -67,10 +72,18 @@ claude --plugin-dir ./plugin
 You'll be prompted for a Respan API key (create one at https://platform.respan.ai).
 Then invoke the skill and confirm the MCP tools are live (`mcp__respan__*`).
 
-Validate the manifest before publishing:
+To exercise the full marketplace path (add + install) exactly as end users do,
+point Claude Code at the repo root:
 
 ```bash
-claude plugin validate ./plugin --strict
+claude plugin marketplace add ./
+claude plugin install respan@respan
+```
+
+Validate the marketplace + plugin from the repo root before publishing:
+
+```bash
+claude plugin validate . --strict
 ```
 
 ## Authentication
