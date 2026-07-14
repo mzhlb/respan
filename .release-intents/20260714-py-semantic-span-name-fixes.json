@@ -1,0 +1,7 @@
+{
+  "summary": "Align Python semantic span naming with the shared contract: RESPAN_SPAN_NAME_STYLE=legacy opt-out, internal name-hint attributes, handoff from/to names, suffix sanitization, and no operation-name suffixes on model-less LLM spans",
+  "packages": {
+    "respan-sdk": "minor",
+    "respan-tracing": "minor"
+  }
+}
