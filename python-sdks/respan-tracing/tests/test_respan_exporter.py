@@ -20,8 +20,13 @@ from respan_sdk.constants.span_attributes import (
     GEN_AI_SYSTEM,
     LLM_REQUEST_MODEL,
     LLM_REQUEST_TYPE,
+    RESPAN_INTERNAL_DROP_SPAN,
+    RESPAN_INTERNAL_SPAN_NAME_DETAIL,
+    RESPAN_INTERNAL_SPAN_NAME_KIND,
     RESPAN_LOG_TYPE,
+    RESPAN_METADATA_FROM_AGENT,
     RESPAN_METADATA_INTERNAL_TRACING_SDK_VERSION,
+    RESPAN_METADATA_TO_AGENT,
     RESPAN_SPAN_TOOL_CALLS,
     RESPAN_SPAN_TOOLS,
 )
@@ -237,6 +242,173 @@ def test_span_to_otlp_json_prefixes_llm_span_names():
         "llm.claude-3-5-sonnet",
         "llm.gpt-4.1",
         "llm.gpt-5.5",
+    ]
+
+
+def test_span_to_otlp_json_legacy_style_preserves_names(monkeypatch):
+    monkeypatch.setenv("RESPAN_SPAN_NAME_STYLE", "legacy")
+
+    spans = [
+        _make_span(
+            name="chat gpt-4o",
+            span_id=2301,
+            attributes={
+                RESPAN_LOG_TYPE: "chat",
+                LLM_REQUEST_MODEL: "gpt-4o",
+            },
+        ),
+        _make_span(
+            name="triage-service.agent",
+            span_id=2302,
+            attributes={
+                SpanAttributes.TRACELOOP_SPAN_KIND: "agent",
+                SpanAttributes.TRACELOOP_ENTITY_NAME: "triage-service",
+            },
+        ),
+    ]
+
+    assert [_span_to_otlp_json(span)["name"] for span in spans] == [
+        "chat gpt-4o",
+        "triage-service.agent",
+    ]
+
+
+def test_span_to_otlp_json_strips_internal_hints_in_both_styles(monkeypatch):
+    attributes = {
+        RESPAN_LOG_TYPE: "chat",
+        LLM_REQUEST_MODEL: "gpt-4o",
+        RESPAN_INTERNAL_SPAN_NAME_KIND: "llm",
+        RESPAN_INTERNAL_SPAN_NAME_DETAIL: "gpt-4o",
+        RESPAN_INTERNAL_DROP_SPAN: True,
+    }
+
+    for style in ("semantic", "legacy"):
+        monkeypatch.setenv("RESPAN_SPAN_NAME_STYLE", style)
+        span = _make_span(name="openai.chat", span_id=2311, attributes=dict(attributes))
+        exported_keys = {
+            attr[OTLP_ATTR_KEY]
+            for attr in _span_to_otlp_json(span)[OTLP_ATTRIBUTES_KEY]
+        }
+        assert RESPAN_INTERNAL_SPAN_NAME_KIND not in exported_keys
+        assert RESPAN_INTERNAL_SPAN_NAME_DETAIL not in exported_keys
+        assert RESPAN_INTERNAL_DROP_SPAN not in exported_keys
+
+
+def test_span_to_otlp_json_honors_internal_name_hints():
+    spans = [
+        _make_span(
+            name="ai.generateText.doGenerate",
+            span_id=2321,
+            attributes={
+                RESPAN_INTERNAL_SPAN_NAME_KIND: "generate",
+                RESPAN_INTERNAL_SPAN_NAME_DETAIL: "doGenerate",
+                RESPAN_LOG_TYPE: "text",
+                LLM_REQUEST_MODEL: "gpt-4o-mini",
+            },
+        ),
+        _make_span(
+            name="ai.toolCall",
+            span_id=2322,
+            attributes={
+                RESPAN_INTERNAL_SPAN_NAME_KIND: "tool",
+                RESPAN_INTERNAL_SPAN_NAME_DETAIL: "lookup_weather",
+            },
+        ),
+        # Hints override a name that already looks semantic.
+        _make_span(
+            name="handoff.task",
+            span_id=2323,
+            attributes={
+                RESPAN_INTERNAL_SPAN_NAME_KIND: "handoff",
+                RESPAN_INTERNAL_SPAN_NAME_DETAIL: "triage-service_to_bank-service",
+                RESPAN_LOG_TYPE: "handoff",
+            },
+        ),
+    ]
+
+    assert [_span_to_otlp_json(span)["name"] for span in spans] == [
+        "llm.gpt-4o-mini",
+        "tool.lookup_weather",
+        "handoff.triage-service_to_bank-service",
+    ]
+
+
+def test_span_to_otlp_json_builds_handoff_names_from_agent_metadata():
+    spans = [
+        _make_span(
+            name="handoff.task",
+            span_id=2331,
+            attributes={
+                RESPAN_LOG_TYPE: "handoff",
+                SpanAttributes.TRACELOOP_ENTITY_NAME: "handoff",
+                RESPAN_METADATA_FROM_AGENT: "Triage Agent",
+                RESPAN_METADATA_TO_AGENT: "Bank Agent",
+            },
+        ),
+        # No from/to metadata: structural "task" suffix must not survive.
+        _make_span(
+            name="handoff.task",
+            span_id=2332,
+            attributes={
+                RESPAN_LOG_TYPE: "handoff",
+                SpanAttributes.TRACELOOP_ENTITY_NAME: "handoff",
+            },
+        ),
+    ]
+
+    assert [_span_to_otlp_json(span)["name"] for span in spans] == [
+        "handoff.Triage_Agent_to_Bank_Agent",
+        "handoff",
+    ]
+
+
+def test_span_to_otlp_json_drops_operation_suffixes_without_model():
+    spans = [
+        _make_span(
+            name="llm.doGenerate",
+            span_id=2341,
+            attributes={RESPAN_LOG_TYPE: "text"},
+        ),
+        _make_span(
+            name="chat.completions",
+            span_id=2342,
+            attributes={RESPAN_LOG_TYPE: "chat"},
+        ),
+        # A model-looking suffix without model attrs is kept.
+        _make_span(name="llm.gpt-4o", span_id=2343),
+    ]
+
+    assert [_span_to_otlp_json(span)["name"] for span in spans] == [
+        "llm",
+        "llm",
+        "llm.gpt-4o",
+    ]
+
+
+def test_span_to_otlp_json_sanitizes_name_details():
+    spans = [
+        _make_span(
+            name="agent run",
+            span_id=2351,
+            attributes={
+                SpanAttributes.TRACELOOP_SPAN_KIND: "agent",
+                SpanAttributes.TRACELOOP_ENTITY_NAME: "Triage Agent (v2)",
+            },
+        ),
+        _make_span(
+            name="handoff.task",
+            span_id=2352,
+            attributes={
+                RESPAN_LOG_TYPE: "handoff",
+                RESPAN_METADATA_FROM_AGENT: "Triage → Bank",
+                RESPAN_METADATA_TO_AGENT: "Bank",
+            },
+        ),
+    ]
+
+    assert [_span_to_otlp_json(span)["name"] for span in spans] == [
+        "agent.Triage_Agent_v2",
+        "handoff.Triage_Bank_to_Bank",
     ]
 
 
