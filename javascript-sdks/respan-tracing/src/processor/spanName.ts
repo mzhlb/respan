@@ -53,7 +53,11 @@ const GENERIC_DETAIL_TOKENS = new Set([
 export function resolveSpanNameStyle(
   value?: RespanSpanNameStyle | string
 ): RespanSpanNameStyle {
-  return value === "legacy" ? "legacy" : "semantic";
+  // Normalize like the Python resolver (.strip().lower()) so the same env
+  // value means the same thing in a mixed-language deployment.
+  const normalized =
+    value === undefined || value === null ? "" : String(value).trim().toLowerCase();
+  return normalized === "legacy" ? "legacy" : "semantic";
 }
 
 export function transformReadableSpanName(
@@ -65,25 +69,38 @@ export function transformReadableSpanName(
   const attributes = stripInternalSemanticNameAttrs(attrs);
   const name =
     resolvedStyle === "semantic" ? semanticSpanNameForSpan(span) : span.name;
-  const parentSpanId =
-    resolvedStyle === "semantic"
-      ? stringAttr(attrs, INTERNAL_EXPORT_PARENT_ATTR)
-      : undefined;
+
+  // The export-parent attr distinguishes "absent" (leave the parent alone)
+  // from "" (the dropped wrapper was a root span — promote the child to root).
+  let reparent: string | null | undefined;
+  if (resolvedStyle === "semantic") {
+    const raw = attrs[INTERNAL_EXPORT_PARENT_ATTR];
+    if (raw !== undefined && raw !== null) {
+      const text = String(raw).trim();
+      reparent = text === "" ? null : text;
+    }
+  }
 
   if (
     name === span.name &&
     attributes === span.attributes &&
-    parentSpanId === undefined
+    reparent === undefined
   ) {
     return span;
   }
 
-  return cloneReadableSpan(span, name, attributes, parentSpanId);
+  return cloneReadableSpan(span, name, attributes, reparent);
 }
 
 export function semanticSpanNameForSpan(span: ReadableSpan): string {
   const attrs = span.attributes as SpanAttrs;
   const operation = resolveOperation(attrs, span.name);
+  // Spans with no recognizable operation keep their original name — the
+  // semantic style renames known operations, it never destroys pass-through
+  // span names (matches the Python exporter).
+  if (!operation) {
+    return span.name;
+  }
   const detail = resolveDetail(attrs, span.name, operation);
 
   const hasInternalHint =
@@ -179,7 +196,8 @@ function cloneReadableSpan(
   span: ReadableSpan,
   name: string,
   attributes: SpanAttrs,
-  parentSpanId?: string
+  // string = new parent id; null = promote to root; undefined = leave as-is
+  reparent?: string | null
 ): ReadableSpan {
   const clone = Object.create(Object.getPrototypeOf(span));
   Object.assign(clone, span);
@@ -193,11 +211,11 @@ function cloneReadableSpan(
     enumerable: true,
     configurable: true,
   });
-  if (parentSpanId !== undefined && parentSpanId !== (span as any).parentSpanId) {
+  if (reparent !== undefined) {
     // OTel SDK 1.x exposes parentSpanId on ReadableSpan; revisit for SDK 2.x
     // (parentSpanContext) when the workspace upgrades.
     Object.defineProperty(clone, "parentSpanId", {
-      value: parentSpanId,
+      value: reparent === null ? undefined : reparent,
       enumerable: true,
       configurable: true,
     });
@@ -205,23 +223,29 @@ function cloneReadableSpan(
   return clone as ReadableSpan;
 }
 
-function resolveOperation(attrs: SpanAttrs, spanName: string): string {
+function resolveOperation(attrs: SpanAttrs, spanName: string): string | undefined {
+  // An explicit instrumentation hint always wins — even an unrecognized value
+  // is used (lowercased + sanitized, prefixes are lowercase by contract),
+  // since it states intent.
   const hintedKind = stringAttr(attrs, INTERNAL_KIND_ATTR);
   if (hintedKind) {
-    return sanitizeNamePart(mapOperation(hintedKind), "span");
+    return mapOperation(hintedKind) ?? sanitizeNamePart(hintedKind.toLowerCase(), "span");
+  }
+
+  // Log type before span kind, matching the Python exporter's priority.
+  const logType = stringAttr(attrs, RespanSpanAttributes.RESPAN_LOG_TYPE);
+  if (logType) {
+    const mapped = mapOperation(logType);
+    if (mapped) return mapped;
   }
 
   const tlKind = stringAttr(attrs, SpanAttributes.TRACELOOP_SPAN_KIND);
   if (tlKind) {
-    return sanitizeNamePart(mapOperation(tlKind), "span");
+    const mapped = mapOperation(tlKind);
+    if (mapped) return mapped;
   }
 
-  const logType = stringAttr(attrs, RespanSpanAttributes.RESPAN_LOG_TYPE);
-  if (logType) {
-    return sanitizeNamePart(mapOperation(logType), "span");
-  }
-
-  return sanitizeNamePart(inferOperationFromName(spanName), "span");
+  return inferOperationFromName(spanName);
 }
 
 function resolveDetail(
@@ -276,7 +300,8 @@ function stringAttr(attrs: SpanAttrs, key: string): string | undefined {
   return text || undefined;
 }
 
-function mapOperation(value: string): string {
+/** Map a kind/log-type token to a semantic operation; undefined when unknown. */
+function mapOperation(value: string): string | undefined {
   const normalized = value.toLowerCase();
 
   switch (normalized) {
@@ -299,7 +324,6 @@ function mapOperation(value: string): string {
     case RespanLogType.GUARDRAIL:
       return "guardrail";
     case RespanLogType.EMBEDDING:
-    case "embedding":
     case "embed":
       return "embedding";
     case RespanLogType.TRANSCRIPTION:
@@ -310,27 +334,25 @@ function mapOperation(value: string): string {
     case RespanLogType.TEXT:
     case RespanLogType.RESPONSE:
     case RespanLogType.GENERATION:
+    case "completion":
+    case "completions":
     case "generate":
     case "llm":
       return "llm";
-    case RespanLogType.CUSTOM:
-    case RespanLogType.UNKNOWN:
-      return "span";
     default:
-      return normalized;
+      // Unknown values (including "custom"/"unknown" log types) resolve to no
+      // operation so the caller preserves the original span name.
+      return undefined;
   }
 }
 
-function inferOperationFromName(spanName: string): string {
+function inferOperationFromName(spanName: string): string | undefined {
   const suffix = spanName.split(".").at(-1);
-  if (suffix) {
-    const mapped = mapOperation(suffix);
-    if (GENERIC_DETAIL_TOKENS.has(suffix.toLowerCase())) {
-      return mapped;
-    }
+  if (suffix && GENERIC_DETAIL_TOKENS.has(suffix.toLowerCase())) {
+    return mapOperation(suffix);
   }
 
-  return "span";
+  return undefined;
 }
 
 function detailFromRawName(spanName: string, operation: string): string {
@@ -350,10 +372,12 @@ function detailFromRawName(spanName: string, operation: string): string {
 }
 
 function sanitizeNamePart(value: string, fallback: string): string {
+  // \p{L}\p{N} keeps unicode letters/digits so non-ASCII agent/tool names
+  // survive — parity with Python's unicode \w.
   const sanitized = value
     .trim()
     .replace(/\s*(?:→|->)\s*/g, "_")
-    .replace(/[^\w.-]+/g, "_")
+    .replace(/[^\p{L}\p{N}_.-]+/gu, "_")
     .replace(/^[_\-.]+|[_\-.]+$/g, "");
 
   return sanitized || fallback;

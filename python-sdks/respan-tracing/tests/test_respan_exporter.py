@@ -2,6 +2,8 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from opentelemetry.sdk.trace.export import SpanExportResult
 from opentelemetry.semconv_ai import SpanAttributes
 from respan_sdk.constants.otlp_constants import (
@@ -37,6 +39,12 @@ from respan_tracing.exporters.respan import (
     _prepare_spans_for_export,
     _span_to_otlp_json,
 )
+
+
+@pytest.fixture(autouse=True)
+def _pin_span_name_style(monkeypatch):
+    """Isolate tests from an ambient RESPAN_SPAN_NAME_STYLE in the shell."""
+    monkeypatch.delenv("RESPAN_SPAN_NAME_STYLE", raising=False)
 
 
 def _make_span(
@@ -243,6 +251,19 @@ def test_span_to_otlp_json_prefixes_llm_span_names():
         "llm.gpt-4.1",
         "llm.gpt-5.5",
     ]
+
+
+def test_span_to_otlp_json_sanitization_keeps_unicode_names():
+    span = _make_span(
+        name="agent run",
+        span_id=2361,
+        attributes={
+            SpanAttributes.TRACELOOP_SPAN_KIND: "agent",
+            SpanAttributes.TRACELOOP_ENTITY_NAME: "客服 Agent",
+        },
+    )
+
+    assert _span_to_otlp_json(span)["name"] == "agent.客服_Agent"
 
 
 def test_span_to_otlp_json_legacy_style_preserves_names(monkeypatch):

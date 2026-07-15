@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   resolveSpanNameStyle,
   semanticSpanNameForSpan,
+  SpanNameTransformingExporter,
   transformReadableSpanBatch,
   transformReadableSpanName,
 } from "../dist/processor/spanName.js";
@@ -20,6 +21,47 @@ test("semantic is the default style; only explicit legacy opts out", () => {
   assert.equal(resolveSpanNameStyle("semantic"), "semantic");
   assert.equal(resolveSpanNameStyle("legacy"), "legacy");
   assert.equal(resolveSpanNameStyle("bogus"), "semantic");
+  // Case/whitespace normalization — same env value must mean the same thing
+  // as in the Python SDK.
+  assert.equal(resolveSpanNameStyle("LEGACY"), "legacy");
+  assert.equal(resolveSpanNameStyle(" legacy "), "legacy");
+  assert.equal(resolveSpanNameStyle("Legacy"), "legacy");
+});
+
+test("unrecognized spans keep their original names in semantic style", () => {
+  // Pass-through helper spans (no kind/log type) are never renamed.
+  assert.equal(semanticSpanNameForSpan(span("http.request", {})), "http.request");
+  // Unknown/custom log types are not operations — name preserved.
+  assert.equal(
+    semanticSpanNameForSpan(
+      span("my_special_step", { "respan.entity.log_type": "custom" })
+    ),
+    "my_special_step"
+  );
+});
+
+test("completion log types map to llm", () => {
+  assert.equal(
+    semanticSpanNameForSpan(
+      span("openai.completion", {
+        "respan.entity.log_type": "completion",
+        "gen_ai.request.model": "gpt-4o",
+      })
+    ),
+    "llm.gpt-4o"
+  );
+});
+
+test("unicode letters survive sanitization", () => {
+  assert.equal(
+    semanticSpanNameForSpan(
+      span("agent run", {
+        "traceloop.span.kind": "agent",
+        "traceloop.entity.name": "客服 Agent",
+      })
+    ),
+    "agent.客服_Agent"
+  );
 });
 
 test("semantic span names use operation prefix and entity detail", () => {
@@ -253,4 +295,73 @@ test("legacy export keeps drop-marked spans and original parents", () => {
     exported[1].attributes["respan.internal.export_parent_span_id"],
     undefined
   );
+});
+
+test("children of a dropped ROOT wrapper are promoted to root (\"\" sentinel)", () => {
+  const wrapper = span("ai.generateText", {
+    "respan.entity.log_type": "task",
+    "respan.internal.drop_span": true,
+  });
+  wrapper.parentSpanId = undefined;
+
+  const child = span("ai.generateText.doGenerate", {
+    "respan.entity.log_type": "chat",
+    "gen_ai.request.model": "gpt-4o",
+    "respan.internal.export_parent_span_id": "",
+  });
+  child.parentSpanId = "wrapper-root";
+
+  const exported = transformReadableSpanBatch([wrapper, child], "semantic");
+
+  assert.equal(exported.length, 1);
+  assert.equal(exported[0].name, "llm.gpt-4o");
+  // The child must NOT reference the dropped wrapper — it becomes the root.
+  assert.equal(exported[0].parentSpanId, undefined);
+  assert.equal(
+    exported[0].attributes["respan.internal.export_parent_span_id"],
+    undefined
+  );
+});
+
+test("SpanNameTransformingExporter delegates export, forceFlush, and shutdown", async () => {
+  const calls = { exported: null, flushed: false, shutdown: false };
+  const fake = {
+    export(spans, cb) {
+      calls.exported = spans;
+      cb({ code: 0 });
+    },
+    forceFlush() {
+      calls.flushed = true;
+      return Promise.resolve();
+    },
+    shutdown() {
+      calls.shutdown = true;
+      return Promise.resolve();
+    },
+  };
+
+  const exporter = new SpanNameTransformingExporter(fake, "semantic");
+  let result;
+  exporter.export(
+    [
+      span("openai.chat", {
+        "respan.entity.log_type": "chat",
+        "gen_ai.request.model": "gpt-4o",
+      }),
+      span("ai.generateText", {
+        "respan.entity.log_type": "task",
+        "respan.internal.drop_span": true,
+      }),
+    ],
+    (r) => {
+      result = r;
+    }
+  );
+
+  assert.equal(result.code, 0);
+  assert.deepEqual(calls.exported.map((s) => s.name), ["llm.gpt-4o"]);
+  await exporter.forceFlush();
+  await exporter.shutdown();
+  assert.equal(calls.flushed, true);
+  assert.equal(calls.shutdown, true);
 });
