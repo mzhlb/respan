@@ -153,6 +153,7 @@ RESPAN_SPAN_HANDOFFS = "respan.span.handoffs"
 RESPAN_INTERNAL_SPAN_NAME_KIND = "respan.internal.span_name.kind"
 RESPAN_INTERNAL_SPAN_NAME_DETAIL = "respan.internal.span_name.detail"
 RESPAN_INTERNAL_DROP_SPAN = "respan.internal.drop_span"
+RESPAN_INTERNAL_EXPORT_PARENT = "respan.internal.export_parent_span_id"
 
 # ---------------------------------------------------------------------------
 # LLM attributes (removed from opentelemetry-semantic-conventions-ai 0.5.0)
